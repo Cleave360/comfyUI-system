@@ -89,3 +89,10 @@ Immediate next actions:
 - Commit and push the rehabilitation change set.
 - With valid Adaptive credentials, capture a positive start/finish audit proof.
 - Review model provenance metadata and the interrupted download.
+
+Post-push verification:
+- Commit `024b731` reached `origin/main` and the worktree was clean.
+- GitHub created CI run `37980509621`, but started zero steps because the account
+  is locked due to a billing issue. This is an external administration blocker,
+  not a test failure. The runner image is pinned to Ubuntu 24.04 in the follow-up
+  commit to avoid the announced `ubuntu-latest` migration.
