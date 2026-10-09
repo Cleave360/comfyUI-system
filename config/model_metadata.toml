@@ -1,0 +1,11 @@
+schema_version = "comfyui.model-metadata.v1"
+
+# Add reviewed provenance by repository-relative artifact path, then regenerate
+# config/models.lock.json. Do not infer provenance from a filename alone.
+#
+# [models."models/unet/example.safetensors"]
+# source = "https://authoritative.example/model/revision"
+# license = "SPDX-or-exact-licence-name"
+# notes = "Acquisition and compatibility evidence"
+
+[models]

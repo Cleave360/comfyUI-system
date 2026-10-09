@@ -12,9 +12,13 @@ import re
 import os
 import random
 import hashlib
+from pathlib import Path
 from typing import Dict
 import requests
 import websockets
+
+from governance import GovernanceGate
+from network_policy import authenticated_path, validate_binding
 
 # WhisperLiveKit imports
 from whisperlivekit import AudioProcessor, TranscriptionEngine
@@ -39,7 +43,7 @@ class KindredAvatarServerVoice:
 
     def __init__(
         self,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8075,
         ollama_host: str = "http://localhost:11434",
         comfyui_host: str = "http://127.0.0.1:8188",
@@ -52,6 +56,16 @@ class KindredAvatarServerVoice:
         self.ollama_host = ollama_host
         self.comfyui_host = comfyui_host
         self.kindred_model = kindred_model
+        self.ws_token = os.getenv("JAZZY_WS_TOKEN", "").strip()
+        self.allowed_origins = [
+            value.strip() for value in os.getenv(
+                "JAZZY_ALLOWED_ORIGINS",
+                "http://127.0.0.1:8070,http://localhost:8070"
+            ).split(",") if value.strip()
+        ]
+        self.max_message_bytes = int(os.getenv("JAZZY_MAX_MESSAGE_BYTES", "1048576"))
+        validate_binding(self.host, self.ws_token)
+        self.governance_gate = GovernanceGate(Path(__file__).resolve().parents[2])
         self.assistant_provider = os.getenv("JAZZY_ASSISTANT_PROVIDER", "").strip().lower()
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
         self.anthropic_base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
@@ -268,6 +282,8 @@ class KindredAvatarServerVoice:
             self.handle_client,
             self.host,
             self.port,
+            origins=self.allowed_origins,
+            max_size=self.max_message_bytes,
             ping_interval=20,
             ping_timeout=20
         ):
@@ -276,6 +292,9 @@ class KindredAvatarServerVoice:
 
     async def handle_client(self, websocket):
         """Handle new WebSocket client connection"""
+        if not authenticated_path(websocket.request.path, self.ws_token):
+            await websocket.close(code=1008, reason="authentication required")
+            return
         client_id = id(websocket)
         logger.info(f"Client {client_id} connected from {websocket.remote_address}")
 
@@ -641,6 +660,8 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
     async def handle_image_generation(self, websocket, client_id: int, prompt: str, workflow_type: str = "standard"):
         """Handle image generation request with workflow selection"""
         logger.info(f"🎨 {workflow_type.upper()} image generation requested: {prompt}")
+        dispatch_context = None
+        terminal_attempted = False
 
         try:
             # Validate workflow type
@@ -712,6 +733,7 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
                     workflow["25"]["inputs"]["noise_seed"] = random.randint(0, 0xffffffffffffffff)
 
             # Queue the prompt
+            dispatch_context = self.governance_gate.begin(workflow, workflow_type)
             logger.info(f"Sending workflow to ComfyUI at {self.comfyui_host}")
             response = requests.post(
                 f"{self.comfyui_host}/prompt",
@@ -759,6 +781,8 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
                                 else:
                                     model_url = f"{self.comfyui_host}/view?filename={glb_filename}&type=output"
                                 logger.info(f"✅ 3D model generated: {model_url}")
+                                terminal_attempted = True
+                                self.governance_gate.finish(dispatch_context, success=True, detail=f"prompt_id={prompt_id}; file={glb_filename}")
                                 await websocket.send(json.dumps({
                                     "type": "image_generation_complete",
                                     "image_url": model_url,
@@ -766,6 +790,8 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
                                 }))
                             else:
                                 logger.info(f"✅ 3D workflow completed with prefix: {export_prefix}")
+                                terminal_attempted = True
+                                self.governance_gate.finish(dispatch_context, success=True, detail=f"prompt_id={prompt_id}; prefix={export_prefix}")
                                 await websocket.send(json.dumps({
                                     "type": "image_generation_complete",
                                     "message": f"🧊 3D workflow complete. Check output files under prefix: {export_prefix}"
@@ -790,6 +816,8 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
 
                                     logger.info(f"✅ Image generated: {image_url}")
 
+                                    terminal_attempted = True
+                                    self.governance_gate.finish(dispatch_context, success=True, detail=f"prompt_id={prompt_id}; file={filename}")
                                     await websocket.send(json.dumps({
                                         "type": "image_generation_complete",
                                         "image_url": image_url,
@@ -802,6 +830,8 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
 
         except Exception as e:
             logger.error(f"Error generating image: {e}", exc_info=True)
+            if dispatch_context is not None and not terminal_attempted:
+                self.governance_gate.finish(dispatch_context, success=False, detail=str(e))
             await websocket.send(json.dumps({
                 "type": "error",
                 "content": f"Image generation failed: {str(e)}"
@@ -811,11 +841,13 @@ Be concise, thoughtful, and creative in your responses.{memory_context}"""
 async def main():
     """Main entry point"""
     server = KindredAvatarServerVoice(
-        host="0.0.0.0",
-        port=8075,
+        host=os.getenv("JAZZY_HOST", "127.0.0.1"),
+        port=int(os.getenv("JAZZY_PORT", "8075")),
+        ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+        comfyui_host=f"http://{os.getenv('COMFYUI_HOST', '127.0.0.1')}:{os.getenv('COMFYUI_PORT', '8188')}",
         whisper_model="base",  # Can use: tiny, base, small, medium, large-v3
         whisper_language="en",
-        kindred_model="qwen2.5:7b"  # Change to kaelen:latest, watson:latest, etc.
+        kindred_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     )
 
     await server.start()

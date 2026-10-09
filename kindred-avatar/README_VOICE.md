@@ -1,5 +1,8 @@
 # 🎤 Jazzy Avatar - Voice Enabled
 
+> Operational note: the root `how_to_run.md` is canonical for startup,
+> security, and lifecycle. This file retains feature-level background.
+
 Real-time speech-to-text + 3D avatar + Ollama AI conversation system with wake word activation.
 
 ## ✨ New Features

@@ -1,5 +1,8 @@
 # 🎯 Quick Fix - Which Server Are You Running?
 
+> `server_voice.py` is the supported backend. Start it through the root
+> `start_all.sh`; `server.py` is retained only as legacy reference code.
+
 You got a response with `"type": "chat_complete"` which means you're running the **original server** (server.py), not the voice-enabled server (server_voice.py).
 
 ## The Issue

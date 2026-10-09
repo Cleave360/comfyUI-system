@@ -65,3 +65,27 @@ Suggested headings to copy:
 - Expanded Vision
 - Immediate Next Actions
 - Evidence
+
+## 2026-10-09 — Repository Rehabilitation and Live Acceptance
+
+Current repo position:
+- All nine rehabilitation tracks are implemented: bootstrap/lock, owned nodes,
+  governance enforcement, network hardening, process lifecycle, CI/tests, model
+  manifest, docs/assets, and repository administration.
+- `./scripts/bootstrap.py --check --skip-deps`, `pip check`, and 8 repository
+  tests pass. Pinned upstream result: 308 passed, 1 skipped, 1 deselected.
+- Live managed start reported all services ready; ComfyUI reported MPS. A Jazzy
+  workflow request without Adaptive credentials failed closed and ComfyUI
+  history remained zero. Managed stop left Adaptive on port 8765.
+
+Decisions and boundaries:
+- Adaptive must accept `comfy.workflow.start` before ComfyUI receives a prompt.
+- Terminal audit failure produces durable ignored local replay evidence.
+- Unknown model source/licence values remain explicit and block redistribution
+  claims; one interrupted 23.8 GB cache download is recorded in the model lock.
+- A sphere is the intentional avatar fallback until a licensed GLTF is selected.
+
+Immediate next actions:
+- Commit and push the rehabilitation change set.
+- With valid Adaptive credentials, capture a positive start/finish audit proof.
+- Review model provenance metadata and the interrupted download.

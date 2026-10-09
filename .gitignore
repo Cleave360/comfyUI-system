@@ -39,6 +39,8 @@ logs/
 **/logs/
 temp/
 **/temp/
+.runtime/
+reports/
 
 # Local ComfyUI user state. Preserve portable workflow definitions only.
 user/*

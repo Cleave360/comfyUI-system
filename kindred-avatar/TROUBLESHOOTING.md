@@ -1,5 +1,8 @@
 # 🐛 Troubleshooting Voice & Text Issues
 
+> Use the root `start_all.sh`, `status_all.sh`, and `stop_all.sh`. Older manual
+> process commands below are diagnostic history, not the managed procedure.
+
 If voice or text messages aren't reaching the backend, follow these steps:
 
 ## Quick Diagnostics

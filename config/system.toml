@@ -1,0 +1,35 @@
+schema_version = "comfyui.system.v1"
+
+[system]
+name = "kindred-comfyui-system"
+version = "0.2.0"
+python = "3.12"
+
+[upstream.comfyui]
+url = "https://github.com/comfyanonymous/ComfyUI.git"
+revision = "acbf08cd60fade74b2e9e5009fa0dcad9538356b"
+
+[upstream.comfyui_manager]
+url = "https://github.com/ltdrdata/ComfyUI-Manager.git"
+revision = "bbafbb1290f000c5241137d23b3887e6d087036d"
+
+[python]
+requirements = "requirements-dev.txt"
+lock = "requirements-lock.txt"
+
+[runtime]
+comfyui_host = "127.0.0.1"
+comfyui_port = 8188
+jazzy_host = "127.0.0.1"
+jazzy_port = 8075
+frontend_host = "127.0.0.1"
+frontend_port = 8070
+
+[links]
+models = "models"
+input = "input"
+output = "output"
+user = "user"
+
+[custom_nodes]
+owned = ["ComfyUI-Ollama-Kindred", "dns_nodes"]

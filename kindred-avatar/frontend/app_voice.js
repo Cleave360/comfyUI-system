@@ -344,7 +344,11 @@ function stopPulseAnimation() {
 
 // WebSocket connection
 function connectWebSocket() {
-    ws = new WebSocket('ws://localhost:8075');
+    const token = new URLSearchParams(window.location.search).get('token');
+    const wsPort = new URLSearchParams(window.location.search).get('ws_port') || '8075';
+    const wsUrl = new URL(`ws://${window.location.hostname || '127.0.0.1'}:${wsPort}`);
+    if (token) wsUrl.searchParams.set('token', token);
+    ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         console.log('✅ Connected to Jazzy Avatar Server');

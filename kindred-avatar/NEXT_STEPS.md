@@ -34,7 +34,9 @@
 ---
 
 ### 2. **Custom Kindred 3D Model** 🎨 HIGH PRIORITY
-**Current Status**: Using placeholder robot.gltf
+**Current Status**: The invalid placeholder download was removed from tracked
+state. The UI deliberately uses its sphere fallback until a licensed GLTF asset
+with documented provenance is selected.
 
 **Options**:
 A. **Quick**: Use Ready Player Me API to generate custom avatar

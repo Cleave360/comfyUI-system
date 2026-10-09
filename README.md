@@ -17,8 +17,15 @@ transcripts are intentionally excluded from version control.
 
 ## Quick start
 
-See [how_to_run.md](how_to_run.md) for environment setup, service startup,
-tests, MPS verification, and endpoint checks.
+```bash
+./scripts/bootstrap.py --repair-links
+cp .env.example .env
+# Set ADAPTIVE_API_KEY in .env, then:
+./start_all.sh
+```
+
+See [how_to_run.md](how_to_run.md) for the complete setup, lifecycle,
+governance, tests, MPS verification, and endpoint checks.
 
 The standard local endpoints are:
 
@@ -33,3 +40,15 @@ Port `8765` is reserved for the Adaptive Layer.
 Repository identity and execution policy are defined by `governance.toml` and
 `governance.policy.toml`. Local `.kindred/` audit and execution evidence is
 append-only and must never be committed.
+
+Every ComfyUI workflow submitted by Jazzy is fail-closed on an accepted
+Adaptive `comfy.workflow.start` audit event. Chat and health checks remain
+available when Adaptive is offline, but workflow dispatch does not.
+
+## Repository contracts
+
+- Pinned upstream revisions and runtime layout: `config/system.toml`
+- Local model inventory: `config/models.lock.json`
+- Components and trust boundaries: `docs/ARCHITECTURE.md`
+- Security policy and reporting: `SECURITY.md`
+- Contribution and release process: `CONTRIBUTING.md` and `docs/RELEASING.md`
