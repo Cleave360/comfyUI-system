@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Test - Kindred Avatar</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a0033;
+            color: #fff;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 { color: #aa88ff; }
+        .test-section {
+            background: #000;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #8866ff;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #004400; color: #00ff88; }
+        .error { background: #440000; color: #ff4444; }
+        .info { background: #004488; color: #88ccff; }
+        button {
+            background: #8866ff;
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover { background: #aa88ff; }
+        button.recording {
+            background: #ff4444;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        #log {
+            background: #000;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .log-entry {
+            padding: 3px;
+            margin: 2px 0;
+        }
+        #audioVisualization {
+            background: #222;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Voice Input Diagnostic Test</h1>
+
+    <!-- Test 1: Microphone Permission -->
+    <div class="test-section">
+        <h2>1️⃣ Microphone Permission</h2>
+        <button onclick="testMicrophone()">Test Microphone Access</button>
+        <div id="micStatus"></div>
+    </div>
+
+    <!-- Test 2: Audio Capture -->
+    <div class="test-section">
+        <h2>2️⃣ Audio Capture Test</h2>
+        <button id="captureBtn" onclick="toggleCapture()">Start Capturing Audio</button>
+        <div id="captureStatus"></div>
+        <canvas id="audioVisualization" width="600" height="100"></canvas>
+        <p id="audioLevel" style="margin-top: 10px; font-size: 14px;">Audio Level: <span id="levelValue">0</span></p>
+    </div>
+
+    <!-- Test 3: WebSocket Connection -->
+    <div class="test-section">
+        <h2>3️⃣ WebSocket Connection</h2>
+        <button onclick="testWebSocket()">Test Connection to Backend</button>
+        <div id="wsStatus"></div>
+    </div>
+
+    <!-- Test 4: Voice to Backend -->
+    <div class="test-section">
+        <h2>4️⃣ Full Voice Pipeline Test</h2>
+        <p>This will record your voice and send it to the backend for transcription.</p>
+        <button id="voiceBtn" onclick="toggleVoiceTest()">🎤 Start Voice Test</button>
+        <div id="voiceStatus"></div>
+        <div id="transcription" style="margin-top: 10px; padding: 10px; background: #222; border-radius: 5px; min-height: 50px;"></div>
+    </div>
+
+    <!-- Debug Log -->
+    <div class="test-section">
+        <h2>📋 Debug Log</h2>
+        <button onclick="clearLog()">Clear Log</button>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let audioContext, audioStream, processor, source;
+        let ws = null;
+        let isRecording = false;
+        let audioLevel = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.style.color = type === 'success' ? '#00ff88' : type === 'error' ? '#ff4444' : '#88ccff';
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function showStatus(elementId, message, type) {
+            const div = document.getElementById(elementId);
+            div.className = 'status ' + type;
+            div.textContent = message;
+        }
+
+        // Test 1: Microphone Permission
+        async function testMicrophone() {
+            log('Testing microphone access...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                showStatus('micStatus', '✅ Microphone access granted!', 'success');
+                log('Microphone access granted', 'success');
+
+                // Get audio track info
+                const audioTrack = stream.getAudioTracks()[0];
+                const settings = audioTrack.getSettings();
+                log(`Audio settings: ${settings.sampleRate}Hz, ${settings.channelCount} channel(s)`, 'info');
+
+                // Stop the stream
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                showStatus('micStatus', '❌ Microphone access denied: ' + error.message, 'error');
+                log('Microphone access denied: ' + error.message, 'error');
+            }
+        }
+
+        // Test 2: Audio Capture with Visualization
+        async function toggleCapture() {
+            const btn = document.getElementById('captureBtn');
+
+            if (!audioStream) {
+                try {
+                    log('Starting audio capture...');
+                    audioStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            channelCount: 1,
+                            sampleRate: 16000,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    source = audioContext.createMediaStreamSource(audioStream);
+
+                    // Create processor for visualization
+                    processor = audioContext.createScriptProcessor(4096, 1, 1);
+                    processor.onaudioprocess = (e) => {
+                        const inputData = e.inputBuffer.getChannelData(0);
+
+                        // Calculate RMS (audio level)
+                        let sum = 0;
+                        for (let i = 0; i < inputData.length; i++) {
+                            sum += inputData[i] * inputData[i];
+                        }
+                        audioLevel = Math.sqrt(sum / inputData.length);
+
+                        // Update visualization
+                        visualizeAudio(inputData);
+                    };
+
+                    source.connect(processor);
+                    processor.connect(audioContext.destination);
+
+                    btn.textContent = 'Stop Capturing';
+                    btn.classList.add('recording');
+                    showStatus('captureStatus', '✅ Capturing audio - speak into your microphone!', 'success');
+                    log('Audio capture started', 'success');
+
+                    // Start level monitoring
+                    startLevelMonitoring();
+
+                } catch (error) {
+                    showStatus('captureStatus', '❌ Failed to capture audio: ' + error.message, 'error');
+                    log('Audio capture failed: ' + error.message, 'error');
+                }
+            } else {
+                stopCapture();
+            }
+        }
+
+        function stopCapture() {
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+            }
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+            if (source) {
+                source.disconnect();
+                source = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            const btn = document.getElementById('captureBtn');
+            btn.textContent = 'Start Capturing Audio';
+            btn.classList.remove('recording');
+            showStatus('captureStatus', 'Stopped', 'info');
+            log('Audio capture stopped');
+        }
+
+        function startLevelMonitoring() {
+            const interval = setInterval(() => {
+                if (!audioStream) {
+                    clearInterval(interval);
+                    return;
+                }
+
+                const levelSpan = document.getElementById('levelValue');
+                const percentage = Math.round(audioLevel * 100);
+                levelSpan.textContent = percentage + '%';
+
+                if (percentage > 5) {
+                    levelSpan.style.color = '#00ff88';
+                    if (percentage > 50) {
+                        log(`Good audio level detected: ${percentage}%`, 'success');
+                    }
+                } else {
+                    levelSpan.style.color = '#ff4444';
+                }
+            }, 100);
+        }
+
+        function visualizeAudio(samples) {
+            const canvas = document.getElementById('audioVisualization');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.strokeStyle = '#aa88ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            const sliceWidth = width / samples.length;
+            let x = 0;
+
+            for (let i = 0; i < samples.length; i++) {
+                const y = (samples[i] * height / 2) + height / 2;
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            ctx.stroke();
+        }
+
+        // Test 3: WebSocket Connection
+        async function testWebSocket() {
+            log('Testing WebSocket connection...');
+
+            try {
+                const testWs = new WebSocket('ws://localhost:8075');
+
+                testWs.onopen = () => {
+                    showStatus('wsStatus', '✅ WebSocket connected!', 'success');
+                    log('WebSocket connected successfully', 'success');
+
+                    // Send ping
+                    testWs.send(JSON.stringify({ type: 'ping' }));
+                    log('Sent ping to server', 'info');
+                };
+
+                testWs.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log('Received from server: ' + JSON.stringify(data), 'success');
+                    testWs.close();
+                };
+
+                testWs.onerror = (error) => {
+                    showStatus('wsStatus', '❌ WebSocket error', 'error');
+                    log('WebSocket error: ' + error, 'error');
+                };
+
+                testWs.onclose = () => {
+                    log('WebSocket closed', 'info');
+                };
+
+            } catch (error) {
+                showStatus('wsStatus', '❌ Failed to connect: ' + error.message, 'error');
+                log('WebSocket connection failed: ' + error.message, 'error');
+            }
+        }
+
+        // Test 4: Full Voice Pipeline
+        async function toggleVoiceTest() {
+            const btn = document.getElementById('voiceBtn');
+
+            if (!isRecording) {
+                try {
+                    log('Starting full voice test...');
+
+                    // Connect WebSocket
+                    ws = new WebSocket('ws://localhost:8075');
+
+                    ws.onopen = async () => {
+                        log('WebSocket connected', 'success');
+                        showStatus('voiceStatus', '🔌 Connected - starting audio...', 'info');
+
+                        // Start audio capture
+                        audioStream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                channelCount: 1,
+                                sampleRate: 16000,
+                                echoCancellation: true,
+                                noiseSuppression: true
+                            }
+                        });
+
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                        source = audioContext.createMediaStreamSource(audioStream);
+                        processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                        processor.onaudioprocess = (e) => {
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                const inputData = e.inputBuffer.getChannelData(0);
+                                const int16Data = new Int16Array(inputData.length);
+                                for (let i = 0; i < inputData.length; i++) {
+                                    int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                                }
+                                ws.send(int16Data.buffer);
+                                log('Sent audio chunk: ' + int16Data.length + ' samples', 'info');
+                            }
+                        };
+
+                        source.connect(processor);
+                        processor.connect(audioContext.destination);
+
+                        isRecording = true;
+                        btn.textContent = '⏹️ Stop Voice Test';
+                        btn.classList.add('recording');
+                        showStatus('voiceStatus', '🎤 Recording - speak now!', 'success');
+                        log('Voice recording started - speak into microphone', 'success');
+                    };
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        log('Received: ' + JSON.stringify(data), 'success');
+
+                        if (data.type === 'transcription') {
+                            const transcriptionDiv = document.getElementById('transcription');
+                            transcriptionDiv.textContent = data.text || '(listening...)';
+                            transcriptionDiv.style.background = data.is_final ? '#004400' : '#444400';
+
+                            if (data.is_final && data.text) {
+                                log('✅ Final transcription: ' + data.text, 'success');
+                                showStatus('voiceStatus', '✅ Transcription received!', 'success');
+                            } else if (data.text) {
+                                log('⏳ Partial transcription: ' + data.text, 'info');
+                            }
+                        } else if (data.type === 'system') {
+                            log('System: ' + data.content, 'info');
+                        } else if (data.type === 'error') {
+                            log('❌ Error: ' + data.content, 'error');
+                            showStatus('voiceStatus', '❌ Error: ' + data.content, 'error');
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        log('WebSocket error', 'error');
+                        showStatus('voiceStatus', '❌ Connection error', 'error');
+                    };
+
+                } catch (error) {
+                    showStatus('voiceStatus', '❌ Failed: ' + error.message, 'error');
+                    log('Voice test failed: ' + error.message, 'error');
+                }
+
+            } else {
+                stopVoiceTest();
+            }
+        }
+
+        function stopVoiceTest() {
+            isRecording = false;
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            stopCapture();
+
+            const btn = document.getElementById('voiceBtn');
+            btn.textContent = '🎤 Start Voice Test';
+            btn.classList.remove('recording');
+            showStatus('voiceStatus', 'Stopped', 'info');
+            log('Voice test stopped');
+        }
+
+        // Auto-run first test on load
+        window.onload = () => {
+            log('Voice diagnostic tool loaded', 'info');
+            log('Run tests in order (1 → 2 → 3 → 4) to diagnose issues', 'info');
+        };
+    </script>
+</body>
+</html>

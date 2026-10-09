@@ -1,0 +1,4 @@
+-r ComfyUI-source/requirements.txt
+-r ComfyUI-source/tests-unit/requirements.txt
+-r kindred-avatar/backend/requirements.txt
+whisperlivekit==0.2.17

@@ -1,0 +1,82 @@
+{
+  "56": {
+    "inputs": {
+      "image": "INPUT_IMAGE_PLACEHOLDER.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "54": {
+    "inputs": {
+      "ckpt_name": "hunyuan3d-dit-v2-mv_fp16.safetensors"
+    },
+    "class_type": "ImageOnlyCheckpointLoader"
+  },
+  "70": {
+    "inputs": {
+      "model": ["54", 0],
+      "shift": 1.0
+    },
+    "class_type": "ModelSamplingAuraFlow"
+  },
+  "66": {
+    "inputs": {
+      "resolution": 3072,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentHunyuan3Dv2"
+  },
+  "51": {
+    "inputs": {
+      "clip_vision": ["54", 1],
+      "image": ["56", 0],
+      "crop": "none"
+    },
+    "class_type": "CLIPVisionEncode"
+  },
+  "80": {
+    "inputs": {
+      "clip_vision_output": ["51", 0]
+    },
+    "class_type": "Hunyuan3Dv2Conditioning"
+  },
+  "3": {
+    "inputs": {
+      "model": ["70", 0],
+      "positive": ["80", 0],
+      "negative": ["80", 1],
+      "latent_image": ["66", 0],
+      "seed": 0,
+      "steps": 24,
+      "cfg": 6,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1
+    },
+    "class_type": "KSampler"
+  },
+  "61": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["54", 2],
+      "num_chunks": 8000,
+      "octree_resolution": 256
+    },
+    "class_type": "VAEDecodeHunyuan3D"
+  },
+  "81": {
+    "inputs": {
+      "voxel": ["61", 0],
+      "algorithm": "surface net",
+      "threshold": 0.6
+    },
+    "class_type": "VoxelToMesh"
+  },
+  "82": {
+    "inputs": {
+      "mesh": ["81", 0],
+      "filename_prefix": "tencent_hunyuan3d_mv"
+    },
+    "class_type": "SaveGLB"
+  }
+}

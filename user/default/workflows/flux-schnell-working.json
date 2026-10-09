@@ -1,0 +1,101 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 8,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "DualCLIPLoader",
+      "pos": [50, 100],
+      "size": {"0": 315, "1": 106},
+      "outputs": [{"name": "CLIP", "type": "CLIP", "links": [1]}],
+      "properties": {},
+      "widgets_values": ["t5xxl_fp16.safetensors", "clip_l.safetensors", "flux"]
+    },
+    {
+      "id": 2,
+      "type": "UNETLoader",
+      "pos": [50, 250],
+      "size": {"0": 315, "1": 82},
+      "outputs": [{"name": "MODEL", "type": "MODEL", "links": [2]}],
+      "properties": {},
+      "widgets_values": ["flux1-schnell.safetensors"]
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [50, 380],
+      "size": {"0": 315, "1": 58},
+      "outputs": [{"name": "VAE", "type": "VAE", "links": [3]}],
+      "properties": {},
+      "widgets_values": ["ae.safetensors"]
+    },
+    {
+      "id": 4,
+      "type": "CLIPTextEncode",
+      "pos": [415, 186],
+      "size": {"0": 400, "1": 200},
+      "inputs": [{"name": "clip", "type": "CLIP", "link": 1}],
+      "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [4]}],
+      "properties": {},
+      "widgets_values": ["a beautiful mountain landscape at sunset, highly detailed, 8k"]
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [473, 609],
+      "size": {"0": 315, "1": 106},
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [5]}],
+      "properties": {},
+      "widgets_values": [1024, 1024, 1]
+    },
+    {
+      "id": 6,
+      "type": "KSampler",
+      "pos": [863, 186],
+      "size": {"0": 315, "1": 262},
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 2},
+        {"name": "positive", "type": "CONDITIONING", "link": 4},
+        {"name": "negative", "type": "CONDITIONING", "link": null},
+        {"name": "latent_image", "type": "LATENT", "link": 5}
+      ],
+      "outputs": [{"name": "LATENT", "type": "LATENT", "links": [6]}],
+      "properties": {},
+      "widgets_values": [42, "fixed", 4, 1.0, "euler", "simple", 1.0]
+    },
+    {
+      "id": 7,
+      "type": "VAEDecode",
+      "pos": [1209, 188],
+      "size": {"0": 210, "1": 46},
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 6},
+        {"name": "vae", "type": "VAE", "link": 3}
+      ],
+      "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [7]}],
+      "properties": {}
+    },
+    {
+      "id": 8,
+      "type": "SaveImage",
+      "pos": [1451, 189],
+      "size": {"0": 315, "1": 270},
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 7}],
+      "properties": {},
+      "widgets_values": ["flux_schnell"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 4, 0, "CLIP"],
+    [2, 2, 0, 6, 0, "MODEL"],
+    [3, 3, 0, 7, 1, "VAE"],
+    [4, 4, 0, 6, 1, "CONDITIONING"],
+    [5, 5, 0, 6, 3, "LATENT"],
+    [6, 6, 0, 7, 0, "LATENT"],
+    [7, 7, 0, 8, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

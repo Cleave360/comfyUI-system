@@ -1,0 +1,64 @@
+[package]
+name = "comfyui-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+# Web framework for API
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+tower = "0.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Image processing
+image = "0.24"
+imageproc = "0.23"
+base64 = "0.21"
+
+# Audio processing
+cpal = "0.15"
+hound = "3.5"
+rubato = "0.14"
+
+# HTTP client for Ollama
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "sqlite"] }
+
+# Graph structures for scene representation
+petgraph = "0.6"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+config = "0.13"
+
+# Async channels
+tokio-stream = "0.1"
+async-stream = "0.3"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lib]
+name = "comfyui_bridge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "comfyui-bridge"
+path = "src/main.rs"

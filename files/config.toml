@@ -1,0 +1,30 @@
+[comfyui]
+websocket_url = "ws://127.0.0.1:8188/ws"
+api_url = "http://127.0.0.1:8188"
+
+[ollama]
+base_url = "http://localhost:11434"
+default_model = "llava:13b"
+vision_models = ["llava:13b", "llava:7b", "bakllava"]
+
+[audio]
+sample_rate = 16000
+channels = 1
+whisper_model = "whisper:large"
+buffer_duration_seconds = 30
+
+[server]
+host = "127.0.0.1"
+port = 3030
+
+[database]
+url = "sqlite://comfyui_bridge.db"
+
+[training]
+annotation_dir = "./annotations"
+dataset_dir = "./datasets"
+auto_save = true
+
+[logging]
+level = "info"
+file = "./logs/bridge.log"

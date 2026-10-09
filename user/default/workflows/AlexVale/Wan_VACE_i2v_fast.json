@@ -1,0 +1,1158 @@
+{
+ "last_node_id": 28,
+ "last_link_id": 28,
+ "nodes": [
+  {
+   "id": 28,
+   "type": "MarkdownNote",
+   "pos": [
+    -600,
+    40
+   ],
+   "size": [
+    540,
+    400
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "title": "README",
+   "properties": {},
+   "widgets_values": [
+    "# Wan-VACE i2v (fast)\n\n**Wan2.1-VACE image-to-video \u2014 animates YOUR still, fast.**\n1.3B + CausVid LoRA. ~4 min/clip on this Mac.\n\n**Start-frame lock (the key):** VACE reference_image is only an object/bg hint \u2014 NOT a start frame. The real start frame is built as control_video = [your frame]+[white pad] with control_masks = [keep frame0]+[generate rest]. That is the SolidMask/RepeatImageBatch/ImageBatch/ImageToMask chain.\n\n**Proven settings:** CausVid strength **0.7** (test 0.3-0.7 if it shakes), KSampler **4 steps / cfg 1.0**, uni_pc, simple, shift 8. 832x480 (1.3B is 480p only), 81f @16fps.\n\n**Style comes from your start frame** \u2014 start photoreal, stay photoreal (1.3B alone skews cartoon; prompts barely fix it).\n\n**Swap the reference** in the LoadImage node to animate any still.\n**Final render:** switch UNET to wan2.1_vace_14B_fp16 + CausVid-14B lora @0.3 (photoreal, slower).\n\n---\n\ud83d\udcda [Tutorial](https://docs.comfy.org/tutorials/video/wan/vace) \u00b7 Docs: https://docs.comfy.org/"
+   ],
+   "color": "#432",
+   "bgcolor": "#653"
+  },
+  {
+   "id": 1,
+   "type": "UNETLoader",
+   "pos": [
+    40,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      28
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "UNETLoader"
+   },
+   "widgets_values": [
+    "wan2.1_vace_1.3B_fp16.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "CLIPLoader",
+   "pos": [
+    40,
+    250
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "CLIP",
+     "type": "CLIP",
+     "links": [
+      2,
+      3
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPLoader"
+   },
+   "widgets_values": [
+    "umt5_xxl_fp16.safetensors",
+    "wan",
+    "default"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "VAELoader",
+   "pos": [
+    40,
+    460
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "VAE",
+     "type": "VAE",
+     "links": [
+      14,
+      25
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "wan_2.1_vae.safetensors"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "ModelSamplingSD3",
+   "pos": [
+    720,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      18
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ModelSamplingSD3"
+   },
+   "widgets_values": [
+    8.0
+   ]
+  },
+  {
+   "id": 5,
+   "type": "CLIPTextEncode",
+   "pos": [
+    380,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "link": 2
+    }
+   ],
+   "outputs": [
+    {
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      12
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "very slow cinematic dolly forward through cold fog toward the small warm light, the light growing gradually larger and nearer, drifting embers. photorealistic, realistic, live-action, 4K, ultra-detailed, cinematic lighting, volumetric haze, film grain, sharp focus, shot on film, depth of field"
+   ]
+  },
+  {
+   "id": 6,
+   "type": "CLIPTextEncode",
+   "pos": [
+    380,
+    250
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "clip",
+     "type": "CLIP",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      13
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "comic, anime, cartoon, illustration, vector art, cel shading, drawing, painting, 2d, stylized, cgi, render, \u8272\u8c03\u8273\u4e3d, overexposed, static, blurry, low quality, worst quality, jpeg artifacts, ugly, deformed, watermark, text, still image, sudden movement, jitter, flicker"
+   ]
+  },
+  {
+   "id": 7,
+   "type": "LoadImage",
+   "pos": [
+    40,
+    670
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      6,
+      17
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [],
+     "slot_index": 1
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "light_motif_s11_832x480.png"
+   ]
+  },
+  {
+   "id": 20,
+   "type": "SolidMask",
+   "pos": [
+    40,
+    880
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      4
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolidMask"
+   },
+   "widgets_values": [
+    1.0,
+    832,
+    480
+   ]
+  },
+  {
+   "id": 21,
+   "type": "MaskToImage",
+   "pos": [
+    380,
+    460
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 4
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      5
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MaskToImage"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 22,
+   "type": "RepeatImageBatch",
+   "pos": [
+    720,
+    250
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 5
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      7,
+      10
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "RepeatImageBatch"
+   },
+   "widgets_values": [
+    80
+   ]
+  },
+  {
+   "id": 23,
+   "type": "ImageBatch",
+   "pos": [
+    1060,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image1",
+     "type": "IMAGE",
+     "link": 6
+    },
+    {
+     "name": "image2",
+     "type": "IMAGE",
+     "link": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      15
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageBatch"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 24,
+   "type": "SolidMask",
+   "pos": [
+    40,
+    1090
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      8
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "SolidMask"
+   },
+   "widgets_values": [
+    0.0,
+    832,
+    480
+   ]
+  },
+  {
+   "id": 25,
+   "type": "MaskToImage",
+   "pos": [
+    380,
+    670
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "mask",
+     "type": "MASK",
+     "link": 8
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      9
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "MaskToImage"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 26,
+   "type": "ImageBatch",
+   "pos": [
+    1060,
+    250
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image1",
+     "type": "IMAGE",
+     "link": 9
+    },
+    {
+     "name": "image2",
+     "type": "IMAGE",
+     "link": 10
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      11
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageBatch"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 27,
+   "type": "ImageToMask",
+   "pos": [
+    1400,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "image",
+     "type": "IMAGE",
+     "link": 11
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MASK",
+     "type": "MASK",
+     "links": [
+      16
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageToMask"
+   },
+   "widgets_values": [
+    "red"
+   ]
+  },
+  {
+   "id": 8,
+   "type": "WanVaceToVideo",
+   "pos": [
+    1740,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 16,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 12
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 13
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 14
+    },
+    {
+     "name": "control_video",
+     "type": "IMAGE",
+     "link": 15
+    },
+    {
+     "name": "control_masks",
+     "type": "MASK",
+     "link": 16
+    },
+    {
+     "name": "reference_image",
+     "type": "IMAGE",
+     "link": 17
+    }
+   ],
+   "outputs": [
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "links": [
+      19
+     ],
+     "slot_index": 0
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "links": [
+      20
+     ],
+     "slot_index": 1
+    },
+    {
+     "name": "latent",
+     "type": "LATENT",
+     "links": [
+      21
+     ],
+     "slot_index": 2
+    },
+    {
+     "name": "trim_latent",
+     "type": "INT",
+     "links": [
+      23
+     ],
+     "slot_index": 3
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "WanVaceToVideo"
+   },
+   "widgets_values": [
+    832,
+    480,
+    81,
+    1,
+    1.0
+   ]
+  },
+  {
+   "id": 9,
+   "type": "KSampler",
+   "pos": [
+    2080,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 18
+    },
+    {
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 19
+    },
+    {
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 20
+    },
+    {
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 21
+    }
+   ],
+   "outputs": [
+    {
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      22
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "KSampler"
+   },
+   "widgets_values": [
+    21,
+    "fixed",
+    4,
+    1.0,
+    "uni_pc",
+    "simple",
+    1.0
+   ]
+  },
+  {
+   "id": 10,
+   "type": "TrimVideoLatent",
+   "pos": [
+    2420,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "samples",
+     "type": "LATENT",
+     "link": 22
+    },
+    {
+     "name": "trim_amount",
+     "type": "INT",
+     "link": 23
+    }
+   ],
+   "outputs": [
+    {
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      24
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TrimVideoLatent"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 11,
+   "type": "VAEDecode",
+   "pos": [
+    2760,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "samples",
+     "type": "LATENT",
+     "link": 24
+    },
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": 25
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      26
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 12,
+   "type": "CreateVideo",
+   "pos": [
+    3100,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 20,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "images",
+     "type": "IMAGE",
+     "link": 26
+    },
+    {
+     "name": "audio",
+     "type": "AUDIO",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "name": "VIDEO",
+     "type": "VIDEO",
+     "links": [
+      27
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CreateVideo"
+   },
+   "widgets_values": [
+    16.0
+   ]
+  },
+  {
+   "id": 13,
+   "type": "SaveVideo",
+   "pos": [
+    3440,
+    40
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 21,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "video",
+     "type": "VIDEO",
+     "link": 27
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "SaveVideo"
+   },
+   "widgets_values": [
+    "wan_vace",
+    "mp4",
+    "h264"
+   ]
+  },
+  {
+   "id": 15,
+   "type": "LoraLoaderModelOnly",
+   "pos": [
+    380,
+    880
+   ],
+   "size": [
+    300,
+    140
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "model",
+     "type": "MODEL",
+     "link": 28
+    }
+   ],
+   "outputs": [
+    {
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      1
+     ],
+     "slot_index": 0
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "widgets_values": [
+    "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+    0.7
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   15,
+   0,
+   4,
+   0,
+   "MODEL"
+  ],
+  [
+   2,
+   2,
+   0,
+   5,
+   0,
+   "CLIP"
+  ],
+  [
+   3,
+   2,
+   0,
+   6,
+   0,
+   "CLIP"
+  ],
+  [
+   4,
+   20,
+   0,
+   21,
+   0,
+   "MASK"
+  ],
+  [
+   5,
+   21,
+   0,
+   22,
+   0,
+   "IMAGE"
+  ],
+  [
+   6,
+   7,
+   0,
+   23,
+   0,
+   "IMAGE"
+  ],
+  [
+   7,
+   22,
+   0,
+   23,
+   1,
+   "IMAGE"
+  ],
+  [
+   8,
+   24,
+   0,
+   25,
+   0,
+   "MASK"
+  ],
+  [
+   9,
+   25,
+   0,
+   26,
+   0,
+   "IMAGE"
+  ],
+  [
+   10,
+   22,
+   0,
+   26,
+   1,
+   "IMAGE"
+  ],
+  [
+   11,
+   26,
+   0,
+   27,
+   0,
+   "IMAGE"
+  ],
+  [
+   12,
+   5,
+   0,
+   8,
+   0,
+   "CONDITIONING"
+  ],
+  [
+   13,
+   6,
+   0,
+   8,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   14,
+   3,
+   0,
+   8,
+   2,
+   "VAE"
+  ],
+  [
+   15,
+   23,
+   0,
+   8,
+   3,
+   "IMAGE"
+  ],
+  [
+   16,
+   27,
+   0,
+   8,
+   4,
+   "MASK"
+  ],
+  [
+   17,
+   7,
+   0,
+   8,
+   5,
+   "IMAGE"
+  ],
+  [
+   18,
+   4,
+   0,
+   9,
+   0,
+   "MODEL"
+  ],
+  [
+   19,
+   8,
+   0,
+   9,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   20,
+   8,
+   1,
+   9,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   21,
+   8,
+   2,
+   9,
+   3,
+   "LATENT"
+  ],
+  [
+   22,
+   9,
+   0,
+   10,
+   0,
+   "LATENT"
+  ],
+  [
+   23,
+   8,
+   3,
+   10,
+   1,
+   "INT"
+  ],
+  [
+   24,
+   10,
+   0,
+   11,
+   0,
+   "LATENT"
+  ],
+  [
+   25,
+   3,
+   0,
+   11,
+   1,
+   "VAE"
+  ],
+  [
+   26,
+   11,
+   0,
+   12,
+   0,
+   "IMAGE"
+  ],
+  [
+   27,
+   12,
+   0,
+   13,
+   0,
+   "VIDEO"
+  ],
+  [
+   28,
+   1,
+   0,
+   15,
+   0,
+   "MODEL"
+  ]
+ ],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4
+}

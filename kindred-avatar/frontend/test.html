@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test - Kindred Avatar</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a0033;
+            color: #fff;
+        }
+        #log {
+            background: #000;
+            padding: 20px;
+            border: 1px solid #8866ff;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .log-entry {
+            padding: 5px;
+            margin: 2px 0;
+        }
+        .success { color: #00ff88; }
+        .error { color: #ff4444; }
+        .info { color: #88ccff; }
+        button {
+            background: #8866ff;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #aa88ff;
+        }
+        input {
+            background: #333;
+            border: 1px solid #8866ff;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Kindred Avatar WebSocket Test</h1>
+    <p>Testing connection to ws://localhost:8075</p>
+
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="sendPing()">Send Ping</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div style="margin: 20px 0;">
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button onclick="sendMessage()">Send Chat</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'info');
+                return;
+            }
+
+            log('Connecting to ws://localhost:8075...', 'info');
+            ws = new WebSocket('ws://localhost:8075');
+
+            ws.onopen = () => {
+                log('✅ Connected successfully!', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                log('📨 Received: ' + event.data, 'success');
+                try {
+                    const data = JSON.parse(event.data);
+                    log('   Type: ' + data.type, 'info');
+                    if (data.content) {
+                        log('   Content: ' + data.content, 'info');
+                    }
+                } catch (e) {
+                    log('   (Not JSON)', 'info');
+                }
+            };
+
+            ws.onerror = (error) => {
+                log('❌ WebSocket error: ' + error, 'error');
+            };
+
+            ws.onclose = () => {
+                log('🔌 Connection closed', 'info');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('Disconnected', 'info');
+            }
+        }
+
+        function sendPing() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected', 'error');
+                return;
+            }
+
+            const message = JSON.stringify({ type: 'ping' });
+            log('📤 Sending: ' + message, 'info');
+            ws.send(message);
+        }
+
+        function sendMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected', 'error');
+                return;
+            }
+
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+
+            if (!text) {
+                log('❌ Message is empty', 'error');
+                return;
+            }
+
+            const message = JSON.stringify({
+                type: 'chat',
+                message: text
+            });
+
+            log('📤 Sending chat: ' + text, 'info');
+            ws.send(message);
+            input.value = '';
+        }
+
+        // Auto-connect on load
+        window.onload = () => {
+            connect();
+        };
+
+        // Send on Enter key
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
