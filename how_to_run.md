@@ -169,6 +169,35 @@ Run `qwen-quality` against port 8288, then inspect
 `reports/profiles/qwen_mps_modules.json`. See `docs/QWEN_MPS_PROFILE.md` for the
 measured hotspot ranking and proof boundaries.
 
+To capture one real MLP block, add these variables to the isolated profiler
+command (the resulting tensor file is large and Git-ignored):
+
+```bash
+KINDRED_QWEN_PROFILE_FORWARD=3 \
+KINDRED_QWEN_CAPTURE_BLOCK=30 \
+KINDRED_QWEN_CAPTURE_PATH=reports/captures/qwen_mlp_block30.pt \
+KINDRED_QWEN_PROFILE_PATH=reports/profiles/qwen_mlp_capture_profile.json \
+  .venv/bin/python scripts/profile_qwen_mps_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory "$PWD/reports/runtime/qwen-profiler/user"
+```
+
+The retained-weight MLX comparison uses the separate ignored
+`reports/venvs/qwen-mlx` environment so production `.venv` stays pinned:
+
+```bash
+reports/venvs/qwen-mlx/bin/python scripts/benchmark_qwen_mlp.py \
+  --capture reports/captures/qwen_mlp_block30.pt \
+  --output reports/benchmarks/qwen_mlp_block30.json
+```
+
+`scripts/qwen_cfg_batch_server.py` is an experimental isolated-server harness,
+not a production launch path. Its `baseline`, `padded`, and `padded_serial`
+modes record transformer forward count, batch size, and context length. The
+pad-to-48 result was slower and failed fixed-seed parity; do not enable it in
+the normal stack. Full commands, hashes, and results are in
+`docs/QWEN_MPS_PROFILE.md`.
+
 Check listening ports after startup:
 
 ```bash

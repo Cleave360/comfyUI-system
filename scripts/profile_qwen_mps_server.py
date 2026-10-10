@@ -23,9 +23,14 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "ComfyUI-source"
 TARGET_FORWARD = int(os.environ.get("KINDRED_QWEN_PROFILE_FORWARD", "3"))
+CAPTURE_BLOCK = int(os.environ.get("KINDRED_QWEN_CAPTURE_BLOCK", "-1"))
 PROFILE_PATH = Path(os.environ.get(
     "KINDRED_QWEN_PROFILE_PATH",
     ROOT / "reports" / "profiles" / "qwen_mps_modules.json",
+))
+CAPTURE_PATH = Path(os.environ.get(
+    "KINDRED_QWEN_CAPTURE_PATH",
+    ROOT / "reports" / "captures" / "qwen_mlp_block.pt",
 ))
 
 sys.path.insert(0, str(SOURCE))
@@ -38,7 +43,7 @@ import torch  # noqa: E402
 from comfy.ldm.qwen_image import model as qwen_model  # noqa: E402
 
 
-state: dict[str, Any] = {"forward": 0, "active": False, "events": []}
+state: dict[str, Any] = {"forward": 0, "active": False, "events": [], "captures": {}}
 
 
 def synchronize() -> None:
@@ -55,6 +60,15 @@ def timed(label: Callable[[Any], str]):
             started = time.perf_counter()
             result = original(self, *args, **kwargs)
             synchronize()
+            block_index = getattr(self, "_kindred_block_index", None)
+            stream = getattr(self, "_kindred_stream", None)
+            if block_index == CAPTURE_BLOCK and stream in {"image_mlp", "text_mlp"}:
+                state["captures"][f"{stream}.input"] = args[0].detach().cpu()
+                state["captures"][f"{stream}.output"] = result.detach().cpu()
+                state["captures"][f"{stream}.expand_weight"] = self.net[0].proj.weight.detach().cpu()
+                state["captures"][f"{stream}.expand_bias"] = self.net[0].proj.bias.detach().cpu()
+                state["captures"][f"{stream}.contract_weight"] = self.net[2].weight.detach().cpu()
+                state["captures"][f"{stream}.contract_bias"] = self.net[2].bias.detach().cpu()
             state["events"].append({
                 "category": label(self),
                 "block": getattr(self, "_kindred_block_index", None),
@@ -230,6 +244,27 @@ def profiled_model_forward(self, *args, **kwargs):
     PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
     PROFILE_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"Kindred Qwen MPS profile written: {PROFILE_PATH}", flush=True)
+    if CAPTURE_BLOCK >= 0:
+        expected = {
+            f"{stream}.{name}"
+            for stream in ("image_mlp", "text_mlp")
+            for name in ("input", "output", "expand_weight", "expand_bias", "contract_weight", "contract_bias")
+        }
+        missing = sorted(expected - state["captures"].keys())
+        if missing:
+            raise RuntimeError(f"Qwen MLP capture incomplete: {missing}")
+        payload = {
+            "metadata": {
+                "schema_version": "kindred.comfyui.qwen_mlp_capture.v1",
+                "torch": torch.__version__,
+                "profile_forward": TARGET_FORWARD,
+                "block": CAPTURE_BLOCK,
+            },
+            "tensors": state["captures"],
+        }
+        CAPTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(payload, CAPTURE_PATH)
+        print(f"Kindred Qwen MLP capture written: {CAPTURE_PATH}", flush=True)
     return result
 
 

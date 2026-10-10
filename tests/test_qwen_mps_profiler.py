@@ -12,5 +12,7 @@ def test_qwen_profiler_wrapper_is_syntax_valid_and_bounded():
     source = path.read_text(encoding="utf-8")
     ast.parse(source)
     assert "TARGET_FORWARD" in source
+    assert "CAPTURE_BLOCK" in source
+    assert "qwen_mlp_capture.v1" in source
     assert 'state["active"] = False' in source
     assert "mps_synchronized_boundaries" in source
