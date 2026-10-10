@@ -52,5 +52,6 @@ available when Adaptive is offline, but workflow dispatch does not.
 - Local model inventory: `config/models.lock.json`
 - Components and trust boundaries: `docs/ARCHITECTURE.md`
 - Reproducible Apple Silicon baseline: `docs/APPLE_SILICON_BASELINE.md`
+- Qwen-Image MPS hotspot profile: `docs/QWEN_MPS_PROFILE.md`
 - Security policy and reporting: `SECURITY.md`
 - Contribution and release process: `CONTRIBUTING.md` and `docs/RELEASING.md`

@@ -153,6 +153,22 @@ generation, so `config/torch-modern-overrides.txt` is experimental evidence,
 not an upgrade instruction. Do not apply it to `.venv`; see
 `docs/APPLE_SILICON_BASELINE.md` for the measurements and rejection decision.
 
+For a bounded Qwen module profile, start a separate server. The selected
+diffusion forward is deliberately synchronized, so do not treat that run's
+wall time as a production benchmark:
+
+```bash
+mkdir -p reports/runtime/qwen-profiler/user
+KINDRED_QWEN_PROFILE_FORWARD=3 \
+  .venv/bin/python scripts/profile_qwen_mps_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory reports/runtime/qwen-profiler/user
+```
+
+Run `qwen-quality` against port 8288, then inspect
+`reports/profiles/qwen_mps_modules.json`. See `docs/QWEN_MPS_PROFILE.md` for the
+measured hotspot ranking and proof boundaries.
+
 Check listening ports after startup:
 
 ```bash

@@ -63,6 +63,14 @@ production route. Keep FLUX Dev and Schnell as regression guards. Do not start
 an MLX port until a profiler identifies a stable hot operation that is outside
 model load, text encoding, and output serialization.
 
+The first production-runtime module profile is documented in
+`docs/QWEN_MPS_PROFILE.md`. It found no repeated language-model `lm_head` or
+top-k path. Image MLP linears were the largest measured family at 37.02% of a
+synchronized diffusion forward, followed by image attention projections at
+22.64%; scaled-dot-product attention itself was 10.49%. The next acceleration
+slice therefore targets a complete retained-weight image MLP, not vocabulary
+selection.
+
 ## PyTorch 2.14.1 comparison
 
 PyTorch 2.14.1, TorchVision 0.29.1, and TorchAudio 2.11.0 were tested in an
