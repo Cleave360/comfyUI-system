@@ -147,6 +147,12 @@ serve graph-cache hits as false warm-render measurements. Use `--prompt`,
 `--seed`, `--width`, `--height`, and `--steps` only for named experiments;
 retain the resulting JSON report so comparisons remain auditable.
 
+The production environment remains pinned to PyTorch 2.5.1. A controlled
+PyTorch 2.14.1 Qwen/MPS comparison produced flat grey frames and slower
+generation, so `config/torch-modern-overrides.txt` is experimental evidence,
+not an upgrade instruction. Do not apply it to `.venv`; see
+`docs/APPLE_SILICON_BASELINE.md` for the measurements and rejection decision.
+
 Check listening ports after startup:
 
 ```bash

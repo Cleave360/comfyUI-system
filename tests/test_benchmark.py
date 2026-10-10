@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import sys
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -60,3 +62,24 @@ def test_qwen_quality_profile_uses_full_bf16_production_route():
     assert configured["58"]["inputs"]["width"] == 1024
     assert configured["58"]["inputs"]["height"] == 576
     assert configured["81"]["inputs"]["text"] == "Qwen benchmark"
+
+
+def test_output_validation_rejects_flat_frames(tmp_path, monkeypatch):
+    monkeypatch.setattr(benchmark, "ROOT", tmp_path)
+    output = tmp_path / "output" / "benchmarks"
+    output.mkdir(parents=True)
+    Image.new("RGB", (16, 16), (128, 127, 125)).save(output / "flat.png")
+    varied = Image.new("RGB", (16, 16), (0, 0, 0))
+    varied.putpixel((0, 0), (255, 255, 255))
+    varied.save(output / "varied.png")
+
+    flat = benchmark.validate_output_images([
+        {"filename": "flat.png", "subfolder": "benchmarks", "type": "output"},
+    ])
+    nonflat = benchmark.validate_output_images([
+        {"filename": "varied.png", "subfolder": "benchmarks", "type": "output"},
+    ])
+
+    assert flat[0]["valid"] is False
+    assert flat[0]["channel_stddev"] == [0.0, 0.0, 0.0]
+    assert nonflat[0]["valid"] is True

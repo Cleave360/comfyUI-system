@@ -22,6 +22,7 @@ from typing import Any
 from uuid import uuid4
 
 import requests
+from PIL import Image, ImageStat
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +158,32 @@ def output_files(entry: dict[str, Any]) -> list[dict[str, Any]]:
     return files
 
 
+def validate_output_images(files: list[dict[str, Any]], *, min_stddev: float = 1.0) -> list[dict[str, Any]]:
+    """Measure local PNG outputs and flag flat frames as invalid renders."""
+    validations: list[dict[str, Any]] = []
+    for item in files:
+        if item.get("type") != "output" or not item.get("filename"):
+            continue
+        output_root = (ROOT / "output").resolve()
+        path = (output_root / str(item.get("subfolder") or "") / str(item["filename"])).resolve()
+        if not path.is_relative_to(output_root):
+            raise ValueError(f"output path escapes the output directory: {path}")
+        with Image.open(path) as image:
+            rgb = image.convert("RGB")
+            stats = ImageStat.Stat(rgb)
+            channel_stddev = [round(value, 3) for value in stats.stddev]
+            validations.append({
+                "filename": item["filename"],
+                "width": rgb.width,
+                "height": rgb.height,
+                "channel_stddev": channel_stddev,
+                "valid": max(channel_stddev) >= min_stddev,
+            })
+    if not validations:
+        raise RuntimeError("ComfyUI reported success without a locally verifiable output image")
+    return validations
+
+
 def run_once(
     session: requests.Session, base_url: str, workflow: dict[str, Any], gate: GovernanceGate,
     *, profile: str, run_number: int, seed: int, timeout: float, sample_interval: float,
@@ -194,7 +221,14 @@ def run_once(
         if status.get("status_str") not in (None, "success") or status.get("completed") is False:
             raise RuntimeError(f"ComfyUI reported unsuccessful history status: {status}")
         elapsed = time.monotonic() - started
-        gate.finish(context, success=True, detail=f"benchmark={profile}; prompt_id={prompt_id}; seconds={elapsed:.3f}")
+        files = output_files(entry)
+        validations = validate_output_images(files)
+        valid = all(item["valid"] for item in validations)
+        gate.finish(
+            context,
+            success=valid,
+            detail=f"benchmark={profile}; prompt_id={prompt_id}; seconds={elapsed:.3f}; output_valid={valid}",
+        )
         return {
             "run": run_number,
             "seed": seed,
@@ -202,9 +236,10 @@ def run_once(
             "started_at": started_wall,
             "submit_seconds": round(submitted - started, 3),
             "total_seconds": round(elapsed, 3),
-            "outputs": output_files(entry),
+            "outputs": files,
+            "output_validation": validations,
             "memory_samples": samples,
-            "status": "success",
+            "status": "success" if valid else "invalid_output",
         }
     except Exception as exc:
         gate.finish(context, success=False, detail=f"benchmark={profile}; prompt_id={prompt_id}; error={exc}")
@@ -308,6 +343,7 @@ def main() -> int:
         ))
 
     timings = [item["total_seconds"] for item in runs]
+    valid_runs = sum(item["status"] == "success" for item in runs)
     report = {
         "schema_version": "kindred.comfyui.apple_silicon_benchmark.v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -321,6 +357,8 @@ def main() -> int:
         "comfyui_system_stats": initial_stats,
         "summary": {
             "runs": len(runs),
+            "valid_runs": valid_runs,
+            "invalid_runs": len(runs) - valid_runs,
             "median_seconds": round(statistics.median(timings), 3),
             "min_seconds": round(min(timings), 3),
             "max_seconds": round(max(timings), 3),
@@ -333,7 +371,7 @@ def main() -> int:
     destination.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["summary"], indent=2))
     print(f"report: {destination}")
-    return 0
+    return 0 if valid_runs == len(runs) else 2
 
 
 if __name__ == "__main__":

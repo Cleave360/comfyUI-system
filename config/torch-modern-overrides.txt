@@ -1,0 +1,6 @@
+# Isolated Apple Silicon comparison environment; never install into .venv.
+# PyTorch 2.14.1 / TorchVision 0.29.1 are the 2026-09-30 stable patch pair.
+# TorchAudio 2.11 supports PyTorch 2.11 and later.
+torch==2.14.1
+torchvision==0.29.1
+torchaudio==2.11.0
