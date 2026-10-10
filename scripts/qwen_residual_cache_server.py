@@ -28,18 +28,46 @@ TARGET_SIGMAS = tuple(
     float(value) for value in os.environ.get("KINDRED_QWEN_CACHE_SKIP_SIGMAS", "").split(",")
     if value.strip()
 )
+RUN_MODES = tuple(
+    value.strip() for value in os.environ.get("KINDRED_QWEN_CACHE_RUN_MODES", "cache").split(",")
+    if value.strip()
+)
 SIGMA_TOLERANCE = float(os.environ.get("KINDRED_QWEN_CACHE_SIGMA_TOLERANCE", "0.0001"))
 if not TARGET_SIGMAS:
     raise SystemExit("KINDRED_QWEN_CACHE_SKIP_SIGMAS must contain at least one sigma")
+if not RUN_MODES or any(value not in {"stock", "cache"} for value in RUN_MODES):
+    raise SystemExit("KINDRED_QWEN_CACHE_RUN_MODES must contain only stock or cache")
 
 sys.path.insert(0, str(SOURCE))
 os.chdir(SOURCE)
 
 import comfy.options  # noqa: E402
 comfy.options.enable_args_parsing()
+import utils.extra_config  # noqa: E402,F401 - reserve ComfyUI's utils package before torch imports
 
 import torch  # noqa: E402
 from comfy.ldm.qwen_image import model as qwen_model  # noqa: E402
+import nodes  # noqa: E402
+
+
+class KindredCacheBustLatent:
+    """Pass a latent through unchanged while varying its cache signature."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"samples": ("LATENT",), "nonce": ("INT", {"default": 0})}}
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "execute"
+    CATEGORY = "Kindred/Testing"
+
+    def execute(self, samples, nonce):
+        del nonce
+        return (samples,)
+
+
+nodes.NODE_CLASS_MAPPINGS["KindredCacheBustLatent"] = KindredCacheBustLatent
+nodes.NODE_DISPLAY_NAME_MAPPINGS["KindredCacheBustLatent"] = "Kindred Cache Bust Latent (Test)"
 
 
 state: dict[str, Any] = {
@@ -48,6 +76,8 @@ state: dict[str, Any] = {
     "skip": False,
     "sigma": None,
     "previous_sigma": None,
+    "run_index": -1,
+    "mode": RUN_MODES[0],
     "branch": "unknown",
     "key": None,
     "input_img": None,
@@ -65,6 +95,14 @@ def selected(sigma: float | None) -> bool:
     return sigma is not None and any(abs(sigma - target) <= SIGMA_TOLERANCE for target in TARGET_SIGMAS)
 
 
+def mode_for_run(index: int) -> str:
+    if len(RUN_MODES) == 1:
+        return RUN_MODES[0]
+    if index >= len(RUN_MODES):
+        raise RuntimeError("Qwen residual cache run-mode sequence exhausted")
+    return RUN_MODES[index]
+
+
 def write_report() -> None:
     report = {
         "schema_version": "kindred.comfyui.qwen_residual_cache.v1",
@@ -79,6 +117,7 @@ def write_report() -> None:
             "quality_changing": True,
             "target_sigmas": TARGET_SIGMAS,
             "sigma_tolerance": SIGMA_TOLERANCE,
+            "run_modes": RUN_MODES,
             "description": "Reuses the preceding same-shape CFG-branch transformer residual.",
         },
         "records": state["records"],
@@ -103,7 +142,11 @@ def cached_block_forward(self, *args, **kwargs):
         state["input_img"] = img.detach().clone()
         state["input_txt"] = txt.detach().clone()
         state["key"] = f"branch={state['branch']};img={img.shape[1]};txt={txt.shape[1]}"
-        state["skip"] = selected(state["sigma"]) and state["key"] in state["cached"]
+        state["skip"] = (
+            state["mode"] == "cache"
+            and selected(state["sigma"])
+            and state["key"] in state["cached"]
+        )
 
     if state["active"] and state["skip"]:
         if block_index == 0:
@@ -130,12 +173,15 @@ def cached_model_forward(self, *args, **kwargs):
     ref_latents = args[4] if len(args) > 4 else kwargs.get("ref_latents")
     if control is not None or ref_latents is not None or x is None or x.shape[0] != 1:
         raise RuntimeError("Qwen residual cache trial supports only batch-1 text-to-image without ControlNet")
-    if (
+    new_run = state["previous_sigma"] is None or (
         state["sigma"] is not None
         and state["previous_sigma"] is not None
         and state["sigma"] > state["previous_sigma"] + SIGMA_TOLERANCE
-    ):
+    )
+    if new_run:
         state["cached"].clear()
+        state["run_index"] += 1
+        state["mode"] = mode_for_run(state["run_index"])
     state["previous_sigma"] = state["sigma"]
     transformer_options = kwargs.get("transformer_options")
     if transformer_options is None:
@@ -156,6 +202,8 @@ def cached_model_forward(self, *args, **kwargs):
         state["active"] = False
     state["records"].append({
         "forward": state["forward"],
+        "run_index": state["run_index"],
+        "mode": state["mode"],
         "branch_key": state["key"],
         "sigma": state["sigma"],
         "skipped": state["skip"],

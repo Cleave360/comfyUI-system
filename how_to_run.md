@@ -242,8 +242,31 @@ KINDRED_QWEN_CACHE_REPORT=reports/profiles/qwen_residual_cache_one_step.json \
 ```
 
 Do not substitute this harness for the normal ComfyUI server. It deliberately
-changes the numerical output and has only two same-seed image comparisons; see
-`docs/QWEN_MPS_PROFILE.md` for results and proof limits.
+changes the numerical output. The initial two-image check and subsequent failed
+promotion sweep are documented in `docs/QWEN_MPS_PROFILE.md`.
+
+For a controlled stock/cache sweep, provide the exact run-mode sequence when
+starting the isolated server. The benchmark inserts a latent pass-through nonce
+to force KSampler execution while retaining model and conditioning caches:
+
+```bash
+KINDRED_QWEN_CACHE_SKIP_SIGMAS=0.2562 \
+KINDRED_QWEN_CACHE_RUN_MODES=stock,stock,stock,cache,cache,stock,stock,cache,cache,stock \
+KINDRED_QWEN_CACHE_REPORT=reports/profiles/qwen_residual_cache_sweep_server.json \
+  .venv/bin/python scripts/qwen_residual_cache_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory "$PWD/reports/runtime/qwen-residual-sweep/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_qwen_residual_cache.py \
+  --base-url http://127.0.0.1:8288 --seeds 5400,5401,5402,5403 \
+  --cooldown-seconds 60 \
+  --cache-report reports/profiles/qwen_residual_cache_sweep_server.json \
+  --output reports/benchmarks/qwen_residual_cache_sweep.json
+```
+
+The measured sweep failed its predeclared quality gate and is retained as
+negative evidence. Do not enable residual reuse in the production server.
 
 The full-stack MLX result is diagnostic and rejected for production; see the
 profile document for its performance and accumulated-error boundaries.

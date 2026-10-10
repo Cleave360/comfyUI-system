@@ -279,3 +279,49 @@ Local ignored evidence:
 - Seed-5364 candidate / stock benchmark SHA-256:
   `9b89abb546c159a8866a20183342d25f31983cef509a980416ba2e48000c326d` /
   `87f0993a2a2eb80f0bf06814c9c611acece65af53f6510acba736fe7ec9fd3eb`
+
+### Interleaved promotion sweep
+
+A follow-up sweep removed ComfyUI graph-cache ambiguity with a latent
+pass-through nonce directly upstream of KSampler. It preserved the loaded model
+and conditioning caches while forcing every same-seed sampler pair to execute.
+The experiment used one exact stock/stock determinism control, four stock/cache
+pairs with alternating order, a single cached sigma (`0.2562`), and a 60-second
+cooldown between renders. Promotion thresholds were declared before execution:
+
+- stock/stock RGB MAE no greater than 0.01;
+- every candidate RGB MAE no greater than 4.0;
+- every candidate PSNR at least 32.0 dB;
+- paired median saving at least 2.0 seconds;
+- exactly two skipped transformer forwards per cache render.
+
+The mechanical and determinism gates passed. The stock control was pixel exact,
+all ten images were valid, mode order matched the declared sequence, and every
+cache render skipped exactly two complete transformer forwards. The paired
+median saving was 9.543 seconds, but individual differences ranged from
+`-13.100` to `+19.118` seconds because sustained MPS throughput still varied
+substantially despite cooldowns. Treat that timing as directional, not a stable
+production speed estimate.
+
+The quality gate failed:
+
+| Seed | RGB MAE | RMSE | PSNR | Pixels changed | Seconds saved |
+|---:|---:|---:|---:|---:|---:|
+| 5400 | 3.287 | 5.972 | 32.61 dB | 96.22% | -13.100 |
+| 5401 | 2.912 | 4.841 | 34.43 dB | 96.30% | +15.064 |
+| 5402 | 3.644 | 6.546 | **31.81 dB** | 96.19% | +19.118 |
+| 5403 | 3.383 | 6.235 | 32.23 dB | 95.32% | +4.021 |
+
+Seed 5402 fell below the predeclared 32.0 dB floor. The worst pair remained
+visually close on manual inspection, but the experiment is rejected under its
+own acceptance criteria. Residual caching stays disabled in production. A
+future trial would need a more conservative reuse construction or a separately
+approved quality threshold; moving the gate after observing these results would
+not be valid promotion evidence.
+
+Local ignored evidence:
+
+- Final sweep report SHA-256:
+  `aa3b158bc83d3947f2e38c54991dccdda658da540625de1ad98355f2eb345cbd`
+- Server mode/skip ledger SHA-256:
+  `91595a7456fe39e68d837dd6d516a27a2411bc343042b4fcc72c3d8ea2ed7b7a`
