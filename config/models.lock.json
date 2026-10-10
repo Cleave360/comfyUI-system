@@ -172,9 +172,9 @@
       "sha256": "cbf55390fff27dbc785046d7007b04e0c5dd7421e7ef128f2831eacb53a8e075",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10.",
       "precision": "bf16",
-      "mps_compatibility": "candidate_not_workflow_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
@@ -392,9 +392,9 @@
       "sha256": "cfafd739459bc86257397259f612a9aee88e5b98e85b5c0d0d1717e898b3463a",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified as the text encoder in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10.",
       "precision": "unknown",
-      "mps_compatibility": "unknown_not_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
@@ -568,9 +568,9 @@
       "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified as the VAE in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10.",
       "precision": "unknown",
-      "mps_compatibility": "unknown_not_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/vae/vae-ft-mse-840000-ema-pruned.safetensors",

@@ -128,3 +128,17 @@ Immediate next actions:
 - Use the Blender MCP in a fresh session to inspect and upgrade Jazzy's mesh,
   rig, idle animation, and viseme mapping.
 - Profile FLUX Dev before selecting any operation for an MLX port.
+
+Qwen production-baseline addendum:
+- The remembered large model is `qwen_image_2512_bf16.safetensors`: 40.9 GB
+  decimal (38.1 GiB), used with the 16.6 GB `qwen_2.5_vl_7b.safetensors`
+  encoder and Qwen image VAE.
+- The proven 1024x576/20-step route measured 113.729 s cold and 72.454 s warm
+  median on PyTorch 2.5.1 MPS. All three outputs completed under governed
+  Adaptive admission and passed visual inspection.
+- A canonical 1328x1328/50-step maximum-quality probe took 1,208.675 s cold;
+  the second queued run was deliberately interrupted after the workload
+  mismatch was established. It is retained as bounded evidence, not promoted
+  as the production benchmark.
+- Qwen BF16 model, root text encoder, and VAE are now marked workflow-verified
+  for MPS in the model lock. FP8 remains unsupported/operator-dependent.

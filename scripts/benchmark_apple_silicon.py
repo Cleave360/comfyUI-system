@@ -47,6 +47,11 @@ PROFILES = {
         "description": "FLUX Dev, 1024x1024, 20 steps; Property Social quality render",
         "prompt": "Editorial photograph of a beautifully renovated British townhouse interior, natural daylight, accurate materials",
     },
+    "qwen-quality": {
+        "workflow": "ComfyUI-workflows/qwen-image-2512-quality-api.json",
+        "description": "Qwen-Image 2512 BF16, 1024x576, 20 steps; proven production-quality route",
+        "prompt": "Editorial photograph of a beautifully renovated British townhouse drawing room, authentic Georgian proportions, natural daylight, accurate materials, premium property campaign photography, realistic and finely detailed",
+    },
 }
 
 
@@ -86,7 +91,11 @@ def configure_workflow(
             prompt_nodes.append(node)
         elif node_type == "RandomNoise" and "noise_seed" in inputs:
             inputs["noise_seed"] = seed
-        elif node_type == "EmptyLatentImage":
+        elif node_type == "KSampler":
+            inputs["seed"] = seed
+            if steps is not None:
+                inputs["steps"] = steps
+        elif node_type in {"EmptyLatentImage", "EmptySD3LatentImage"}:
             if width is not None:
                 inputs["width"] = width
             if height is not None:
@@ -229,8 +238,8 @@ def inspect_profile(name: str) -> dict[str, Any]:
         "name": name,
         **PROFILES[name],
         "models": [node["inputs"] for node in nodes if node.get("class_type") in {"UNETLoader", "CheckpointLoaderSimple"}],
-        "latent": [node["inputs"] for node in nodes if node.get("class_type") == "EmptyLatentImage"],
-        "scheduler": [node["inputs"] for node in nodes if node.get("class_type") == "BasicScheduler"],
+        "latent": [node["inputs"] for node in nodes if node.get("class_type") in {"EmptyLatentImage", "EmptySD3LatentImage"}],
+        "scheduler": [node["inputs"] for node in nodes if node.get("class_type") in {"BasicScheduler", "KSampler"}],
     }
 
 

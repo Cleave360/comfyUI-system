@@ -46,3 +46,17 @@ def test_system_stats_redacts_argv_without_mutating_payload():
     assert "argv" not in sanitized["system"]
     assert payload["system"]["argv"][-1] == "secret"
     assert sanitized["devices"] == payload["devices"]
+
+
+def test_qwen_quality_profile_uses_full_bf16_production_route():
+    workflow = benchmark.load_workflow("qwen-quality")
+    configured = benchmark.configure_workflow(
+        workflow, prompt="Qwen benchmark", seed=999, prefix="benchmarks/qwen",
+    )
+    assert configured["37"]["inputs"]["unet_name"] == "qwen_image_2512_bf16.safetensors"
+    assert configured["38"]["inputs"]["clip_name"] == "qwen_2.5_vl_7b.safetensors"
+    assert configured["3"]["inputs"]["steps"] == 20
+    assert configured["3"]["inputs"]["seed"] == 999
+    assert configured["58"]["inputs"]["width"] == 1024
+    assert configured["58"]["inputs"]["height"] == 576
+    assert configured["81"]["inputs"]["text"] == "Qwen benchmark"

@@ -128,10 +128,14 @@ then run a cold-first plus two warm renders with a deterministic seed sequence:
 .venv/bin/python scripts/benchmark_apple_silicon.py run --profile interactive
 .venv/bin/python scripts/benchmark_apple_silicon.py run --profile brand-social
 .venv/bin/python scripts/benchmark_apple_silicon.py run --profile property-quality
+.venv/bin/python scripts/benchmark_apple_silicon.py run --profile qwen-quality --timeout 1800
 ```
 
-The three profiles exercise 512x512 FLUX Schnell interaction latency, the
-1080x1080 Kindred social workflow, and a 1024x1024 FLUX Dev quality render.
+The profiles exercise 512x512 FLUX Schnell interaction latency, the 1080x1080
+Kindred social workflow, a 1024x1024 FLUX Dev quality render, and the proven
+1024x576/20-step Qwen-Image 2512 BF16 production route. The canonical
+1328x1328/50-step Qwen template is a separate maximum-quality workload and is
+not the routine benchmark.
 Each prompt is admitted through the same fail-closed Adaptive governance gate
 as Jazzy. JSON reports and generated benchmark images are written beneath
 ignored `reports/benchmarks/` and `output/benchmarks/`. The report records the
