@@ -325,3 +325,60 @@ Local ignored evidence:
   `aa3b158bc83d3947f2e38c54991dccdda658da540625de1ad98355f2eb345cbd`
 - Server mode/skip ledger SHA-256:
   `91595a7456fe39e68d837dd6d516a27a2411bc343042b4fcc72c3d8ea2ed7b7a`
+
+## PyTorch 2.12 zero-copy and native MLX VAE experiment
+
+The bridge assumption changed with PyTorch 2.12. In an isolated environment
+(`torch==2.12.1`, `mlx==0.32.3`) ordinary MPS tensors imported into MLX with
+`mx.asarray(..., copy=False)`, and MLX arrays imported back with
+`torch.as_tensor(...)`, retained shared Metal storage. Mutation probes passed
+in both directions for float32, float16, and bfloat16, including a strided
+Torch view. For the real `[1,2304,3072]` Qwen image-MLP input, the median
+Torch-to-MLX-to-Torch handoff was 3.625 microseconds.
+
+That mechanical result did not rescue the Qwen MLP candidate. On the same real
+capture, native Torch 2.12 MPS BF16 took 14.716 ms while the complete zero-copy
+MLX round trip took 16.357 ms, a 0.8997x result. Its numerical quality gate
+passed (`0.002284` relative L2), but the speed gate failed. The useful result is
+that the bridge itself is no longer the blocker in PyTorch 2.12; candidate
+regions still need faster MLX kernels.
+
+The Qwen image VAE is not a Stable Diffusion or FLUX 2D `AutoencoderKL`. The
+local 242 MiB checkpoint is a Wan 2.1 causal 3D VAE with 16 latent channels,
+and Apple's current `mlx-examples/video/wan2.1/wan/vae.py` is the matching
+reference architecture. The experiment pinned `mlx-examples` commit
+`796f5b53cab69a3d48a44233ce21aae889e94a08` and captured the exact real
+`[1,16,1,72,128]` latent and PyTorch output from a governed 1024x576 Qwen run.
+
+The fair comparator excludes weight loading and compilation, synchronizes each
+iteration, and includes the normal ComfyUI CPU input and CPU output boundaries:
+
+| Decoder | Warm median (7 runs) | Relative speed | Output parity |
+|---|---:|---:|---|
+| ComfyUI PyTorch 2.5.1 MPS BF16 | 1028.395 ms | 1.0000x | Exact capture match |
+| Official MLX Wan VAE, strict precision | 342.841 ms | **2.9996x** | MAE 0.630 RGB levels; 43.747 dB PSNR |
+
+The MLX path saved 685.554 ms per image at this resolution. It passed all
+predeclared trial gates: exact shape, finite output, mean error no greater than
+one RGB level, PSNR at least 40 dB, speedup at least 1.05x, and peak MLX memory
+below 12 GiB. Observed warm MLX peak memory was 9.01 GiB. The output is not
+bit-exact: 99.967% of float pixels differ and the maximum single-channel error
+was 0.19949, despite the low aggregate error. This is therefore a strong
+component result, not yet a production promotion or a perceptual-quality claim.
+
+At the current roughly 72-second full workflow, the direct still-image saving
+is under one second. The result becomes more important for multi-frame/video
+decoding and establishes the first measured MLX region with a material speed
+advantage. Production remains on PyTorch 2.5.1; an end-to-end trial requires an
+isolated full ComfyUI environment on PyTorch 2.12 and an opt-in decoder hook.
+
+Local ignored evidence:
+
+- Zero-copy bridge report SHA-256:
+  `071eaa9ca0406fbac883045ab659be0eb03d580a578d5b495ef53e15680107b9`
+- Real VAE capture SHA-256:
+  `c9094cfe641b6165f2d361c3ea780aa40a777b5f4a9de7df86a039127cb8d273`
+- Native Torch VAE report SHA-256:
+  `1fc0f7b630eb8a6c24307cad9a126fdf81baaf4de8a92ae3be821e1133e4eeed`
+- MLX VAE report SHA-256:
+  `b461744da360e04a9bece6589bf87776211dbe683a6b34f955e67ee04eec5a0c`

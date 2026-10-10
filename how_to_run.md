@@ -219,6 +219,46 @@ reports/venvs/qwen-mlx/bin/python scripts/benchmark_qwen_block.py \
   --skip-int8 --output reports/benchmarks/qwen_blocks0_59.json
 ```
 
+PyTorch 2.12 reopens zero-copy Torch MPS/MLX interoperability. Keep that newer
+runtime isolated from production and verify the bridge before using it:
+
+```bash
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_mps_mlx_zero_copy.py \
+  --warmups 3 --iterations 9 --handoff-iterations 50
+```
+
+For the Qwen VAE comparison, first launch the one-shot capture server on an
+experimental port and dispatch one governed `qwen-quality` render to it. Stop
+the server after `reports/captures/qwen_vae_1024x576.pt` appears:
+
+```bash
+.venv/bin/python scripts/capture_qwen_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory "$PWD/reports/runtime/qwen-vae/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_apple_silicon.py run \
+  --profile qwen-quality --base-url http://127.0.0.1:8288 \
+  --runs 1 --seed 7460 --width 1024 --height 576 --steps 20 \
+  --timeout 1800 --no-cold-first \
+  --output reports/benchmarks/qwen_vae_capture_run.json
+```
+
+Then run the warm native control and complete strict-precision MLX bridge:
+
+```bash
+.venv/bin/python scripts/benchmark_qwen_vae_torch.py \
+  --warmups 2 --iterations 7
+
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_mlx.py --warmups 2 --iterations 7
+```
+
+The measured MLX decoder passed the isolated trial gates at 2.9996x the native
+VAE speed, but it is not bit-exact and is not wired into the production server.
+See `docs/QWEN_MPS_PROFILE.md` for the quality, memory, and promotion boundary.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
