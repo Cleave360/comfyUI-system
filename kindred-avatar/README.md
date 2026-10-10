@@ -17,7 +17,8 @@ cp .env.example .env
 
 Open `http://127.0.0.1:8070/index_voice.html`. Use `./status_all.sh` and
 `./stop_all.sh` for lifecycle management. The managed backend listens on
-`ws://127.0.0.1:8075`; port 8765 remains assigned to Adaptive.
+`ws://127.0.0.1:8075`; Adaptive uses port 8080 for its API and 8765 for its
+streaming UI.
 
 ## Features
 

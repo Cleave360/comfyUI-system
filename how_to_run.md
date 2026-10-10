@@ -20,8 +20,8 @@ cd ~/Documents/ComfyUI
 cp .env.example .env
 ```
 
-Set `ADAPTIVE_API_KEY` in `.env`. The default Adaptive endpoint is
-`http://127.0.0.1:8765`. Do not commit `.env`.
+Set `ADAPTIVE_API_KEY` in `.env`. The default Adaptive API endpoint is
+`http://127.0.0.1:8080`; its streaming UI uses port `8765`. Do not commit `.env`.
 
 `pyexpat` is part of Python's standard library; it is not a separate project dependency. Verify it with:
 
@@ -42,7 +42,8 @@ The launcher uses only the root `.venv` and starts:
 - Jazzy avatar frontend at `http://127.0.0.1:8070/index_voice.html`
 - Jazzy WebSocket backend at `ws://127.0.0.1:8075`
 
-Port `8765` is reserved for the Adaptive Layer and is not touched by this workspace.
+Port `8765` is reserved for the Adaptive Layer streaming UI and is not touched
+by this workspace. Governed audit events go to the Adaptive API on port `8080`.
 
 Logs are written under `logs/` and are intentionally ignored by Git.
 Process ownership is recorded under `.runtime/`; the launcher never kills an
@@ -111,6 +112,36 @@ Verify Apple Metal execution:
 ```bash
 .venv/bin/python -c 'import torch; assert torch.backends.mps.is_available(); x=torch.arange(6, dtype=torch.float32, device="mps").reshape(2,3); print((x @ x.T).cpu())'
 ```
+
+## Apple Silicon image benchmarks
+
+Inspect the reproducible benchmark profiles without starting ComfyUI:
+
+```bash
+.venv/bin/python scripts/benchmark_apple_silicon.py inspect
+```
+
+Start the stack (and the Adaptive Layer at the configured `ADAPTIVE_BASE`),
+then run a cold-first plus two warm renders with a deterministic seed sequence:
+
+```bash
+.venv/bin/python scripts/benchmark_apple_silicon.py run --profile interactive
+.venv/bin/python scripts/benchmark_apple_silicon.py run --profile brand-social
+.venv/bin/python scripts/benchmark_apple_silicon.py run --profile property-quality
+```
+
+The three profiles exercise 512x512 FLUX Schnell interaction latency, the
+1080x1080 Kindred social workflow, and a 1024x1024 FLUX Dev quality render.
+Each prompt is admitted through the same fail-closed Adaptive governance gate
+as Jazzy. JSON reports and generated benchmark images are written beneath
+ignored `reports/benchmarks/` and `output/benchmarks/`. The report records the
+Python, PyTorch/MPS, workflow, timing, and memory context while deliberately
+excluding ComfyUI's launch arguments, which may contain secrets.
+
+The default base seed is 360; successive runs use 361 and 362 so ComfyUI cannot
+serve graph-cache hits as false warm-render measurements. Use `--prompt`,
+`--seed`, `--width`, `--height`, and `--steps` only for named experiments;
+retain the resulting JSON report so comparisons remain auditable.
 
 Check listening ports after startup:
 

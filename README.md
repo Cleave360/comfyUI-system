@@ -33,7 +33,8 @@ The standard local endpoints are:
 - Jazzy frontend: `http://127.0.0.1:8070/index_voice.html`
 - Jazzy WebSocket backend: `ws://127.0.0.1:8075`
 
-Port `8765` is reserved for the Adaptive Layer.
+The Adaptive API runs on port `8080`; port `8765` is reserved for its streaming
+UI. Neither port is owned by this workspace.
 
 ## Governance
 
@@ -50,5 +51,6 @@ available when Adaptive is offline, but workflow dispatch does not.
 - Pinned upstream revisions and runtime layout: `config/system.toml`
 - Local model inventory: `config/models.lock.json`
 - Components and trust boundaries: `docs/ARCHITECTURE.md`
+- Reproducible Apple Silicon baseline: `docs/APPLE_SILICON_BASELINE.md`
 - Security policy and reporting: `SECURITY.md`
 - Contribution and release process: `CONTRIBUTING.md` and `docs/RELEASING.md`

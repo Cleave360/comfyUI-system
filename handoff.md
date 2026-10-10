@@ -96,3 +96,35 @@ Post-push verification:
   is locked due to a billing issue. This is an external administration blocker,
   not a test failure. The runner image is pinned to Ubuntu 24.04 in the follow-up
   commit to avoid the announced `ubuntu-latest` migration.
+
+## 2026-10-10 — Apple Silicon Baseline and Blender Reconnaissance
+
+Current repo position:
+- A governed Apple Silicon benchmark harness now covers Jazzy interaction,
+  Branding Lab social, and Property Social quality workflows. On the M3 Ultra,
+  PyTorch 2.5.1 MPS warm medians were 3.022 s, 25.667 s, and 72.967 s.
+- Adaptive audit admission initially rejected the obsolete
+  `execution.audit.v1` schema value. The emitter now follows the canonical
+  `v1.1` contract and retains bounded structured rejection diagnostics.
+- Adaptive topology is explicit: API on 8080 and streaming UI on 8765.
+- The existing Jazzy GLB has all 52 ARKit morph targets, but no skin or animation;
+  the visual mesh remains an early prototype rather than a production avatar.
+- The existing `uvx blender-mcp` server is registered globally for Codex and
+  will become available after a new Codex session.
+
+Evidence and boundaries:
+- `15 passed`; `pip check`, bootstrap check, and model manifest check pass.
+- Baseline methodology and local report hashes are recorded in
+  `docs/APPLE_SILICON_BASELINE.md`. Generated reports and images remain ignored.
+- Comfy MCP's detached launcher currently uses comfy-cli's Python rather than
+  this repo's `.venv` and fails on missing Pillow. The repo lifecycle manager is
+  the verified launcher; fixing the MCP interpreter selection remains open.
+- `/system_stats` is system-wide unified-memory evidence, not kernel-level MLX
+  or zero-copy proof.
+
+Immediate next actions:
+- Build an isolated modern-PyTorch comparison environment without changing
+  `.venv`, then repeat the three deterministic profiles.
+- Use the Blender MCP in a fresh session to inspect and upgrade Jazzy's mesh,
+  rig, idle animation, and viseme mapping.
+- Profile FLUX Dev before selecting any operation for an MLX port.

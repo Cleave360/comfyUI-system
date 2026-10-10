@@ -111,11 +111,18 @@ class GovernanceGate:
             json=payload,
             timeout=self.timeout,
         )
-        response.raise_for_status()
         try:
             body = response.json()
         except ValueError:
             body = {}
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            if isinstance(body, dict):
+                code = str(body.get("code", "HTTP_ERROR"))[:80]
+                message = str(body.get("message", response.reason))[:300]
+                raise GovernanceError(f"Adaptive {response.status_code} {code}: {message}") from exc
+            raise
         if isinstance(body, dict) and body.get("accepted") is False:
             raise GovernanceError(f"Adaptive rejected audit append: {body}")
 
@@ -123,7 +130,7 @@ class GovernanceGate:
         if not HEX_64.fullmatch(context.command_hash):
             raise GovernanceError("invalid command hash")
         event = {
-            "schema_version": "execution.audit.v1",
+            "schema_version": "v1.1",
             "event_id": str(uuid4()),
             "event_ts": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
