@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "ComfyUI-source"
 TARGET_FORWARD = int(os.environ.get("KINDRED_QWEN_PROFILE_FORWARD", "3"))
 CAPTURE_BLOCK = int(os.environ.get("KINDRED_QWEN_CAPTURE_BLOCK", "-1"))
+CAPTURE_BLOCK_COUNT = int(os.environ.get("KINDRED_QWEN_CAPTURE_BLOCK_COUNT", "1"))
+CAPTURE_KIND = os.environ.get("KINDRED_QWEN_CAPTURE_KIND", "mlp")
 PROFILE_PATH = Path(os.environ.get(
     "KINDRED_QWEN_PROFILE_PATH",
     ROOT / "reports" / "profiles" / "qwen_mps_modules.json",
@@ -32,6 +34,10 @@ CAPTURE_PATH = Path(os.environ.get(
     "KINDRED_QWEN_CAPTURE_PATH",
     ROOT / "reports" / "captures" / "qwen_mlp_block.pt",
 ))
+if CAPTURE_KIND not in {"mlp", "block", "block_boundary"}:
+    raise SystemExit("KINDRED_QWEN_CAPTURE_KIND must be mlp, block, or block_boundary")
+if CAPTURE_BLOCK_COUNT < 1:
+    raise SystemExit("KINDRED_QWEN_CAPTURE_BLOCK_COUNT must be positive")
 
 sys.path.insert(0, str(SOURCE))
 os.chdir(SOURCE)
@@ -43,7 +49,22 @@ import torch  # noqa: E402
 from comfy.ldm.qwen_image import model as qwen_model  # noqa: E402
 
 
-state: dict[str, Any] = {"forward": 0, "active": False, "events": [], "captures": {}}
+state: dict[str, Any] = {
+    "forward": 0,
+    "active": False,
+    "events": [],
+    "captures": {},
+    "block_captures": {},
+    "block_boundary": {},
+}
+
+
+def cpu_copy(value):
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, tuple):
+        return tuple(cpu_copy(item) for item in value)
+    return value
 
 
 def synchronize() -> None:
@@ -56,21 +77,58 @@ def timed(label: Callable[[Any], str]):
         def wrapped(self, *args, **kwargs):
             if not state["active"]:
                 return original(self, *args, **kwargs)
+            category = label(self)
+            block_index = getattr(self, "_kindred_block_index", None)
+            capture_block = (
+                CAPTURE_KIND in {"block", "block_boundary"}
+                and category == "transformer_block"
+                and CAPTURE_BLOCK <= block_index < CAPTURE_BLOCK + CAPTURE_BLOCK_COUNT
+            )
+            if capture_block:
+                names = (
+                    "hidden_states", "encoder_hidden_states", "encoder_hidden_states_mask",
+                    "temb", "image_rotary_emb", "timestep_zero_index", "transformer_options",
+                )
+                inputs = {
+                    name: kwargs.get(name, args[index] if index < len(args) else None)
+                    for index, name in enumerate(names)
+                }
             synchronize()
             started = time.perf_counter()
             result = original(self, *args, **kwargs)
             synchronize()
-            block_index = getattr(self, "_kindred_block_index", None)
             stream = getattr(self, "_kindred_stream", None)
-            if block_index == CAPTURE_BLOCK and stream in {"image_mlp", "text_mlp"}:
+            if CAPTURE_KIND == "mlp" and block_index == CAPTURE_BLOCK and stream in {"image_mlp", "text_mlp"}:
                 state["captures"][f"{stream}.input"] = args[0].detach().cpu()
                 state["captures"][f"{stream}.output"] = result.detach().cpu()
                 state["captures"][f"{stream}.expand_weight"] = self.net[0].proj.weight.detach().cpu()
                 state["captures"][f"{stream}.expand_bias"] = self.net[0].proj.bias.detach().cpu()
                 state["captures"][f"{stream}.contract_weight"] = self.net[2].weight.detach().cpu()
                 state["captures"][f"{stream}.contract_bias"] = self.net[2].bias.detach().cpu()
+            if capture_block and CAPTURE_KIND == "block":
+                state["block_captures"][block_index] = {
+                    "inputs": {name: cpu_copy(value) for name, value in inputs.items()},
+                    "outputs": {
+                        "encoder_hidden_states": cpu_copy(result[0]),
+                        "hidden_states": cpu_copy(result[1]),
+                    },
+                    "state_dict": {
+                        name: value.detach().cpu()
+                        for name, value in self.state_dict().items()
+                    },
+                }
+            elif capture_block and CAPTURE_KIND == "block_boundary":
+                if block_index == CAPTURE_BLOCK:
+                    state["block_boundary"]["inputs"] = {
+                        name: cpu_copy(value) for name, value in inputs.items()
+                    }
+                if block_index == CAPTURE_BLOCK + CAPTURE_BLOCK_COUNT - 1:
+                    state["block_boundary"]["outputs"] = {
+                        "encoder_hidden_states": cpu_copy(result[0]),
+                        "hidden_states": cpu_copy(result[1]),
+                    }
             state["events"].append({
-                "category": label(self),
+                "category": category,
                 "block": getattr(self, "_kindred_block_index", None),
                 "milliseconds": round((time.perf_counter() - started) * 1000, 3),
             })
@@ -245,26 +303,66 @@ def profiled_model_forward(self, *args, **kwargs):
     PROFILE_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"Kindred Qwen MPS profile written: {PROFILE_PATH}", flush=True)
     if CAPTURE_BLOCK >= 0:
-        expected = {
-            f"{stream}.{name}"
-            for stream in ("image_mlp", "text_mlp")
-            for name in ("input", "output", "expand_weight", "expand_bias", "contract_weight", "contract_bias")
-        }
-        missing = sorted(expected - state["captures"].keys())
-        if missing:
-            raise RuntimeError(f"Qwen MLP capture incomplete: {missing}")
-        payload = {
-            "metadata": {
-                "schema_version": "kindred.comfyui.qwen_mlp_capture.v1",
+        if CAPTURE_KIND == "mlp":
+            expected = {
+                f"{stream}.{name}"
+                for stream in ("image_mlp", "text_mlp")
+                for name in ("input", "output", "expand_weight", "expand_bias", "contract_weight", "contract_bias")
+            }
+            missing = sorted(expected - state["captures"].keys())
+            if missing:
+                raise RuntimeError(f"Qwen MLP capture incomplete: {missing}")
+            payload = {
+                "metadata": {
+                    "schema_version": "kindred.comfyui.qwen_mlp_capture.v1",
+                    "torch": torch.__version__,
+                    "profile_forward": TARGET_FORWARD,
+                    "block": CAPTURE_BLOCK,
+                },
+                "tensors": state["captures"],
+            }
+        elif CAPTURE_KIND == "block":
+            expected_blocks = set(range(CAPTURE_BLOCK, CAPTURE_BLOCK + CAPTURE_BLOCK_COUNT))
+            missing_blocks = sorted(expected_blocks - state["block_captures"].keys())
+            if missing_blocks:
+                raise RuntimeError(f"Qwen transformer block captures missing: {missing_blocks}")
+            metadata = {
+                "schema_version": (
+                    "kindred.comfyui.qwen_block_capture.v1"
+                    if CAPTURE_BLOCK_COUNT == 1
+                    else "kindred.comfyui.qwen_block_range_capture.v1"
+                ),
                 "torch": torch.__version__,
                 "profile_forward": TARGET_FORWARD,
                 "block": CAPTURE_BLOCK,
-            },
-            "tensors": state["captures"],
-        }
+                "block_count": CAPTURE_BLOCK_COUNT,
+            }
+            if CAPTURE_BLOCK_COUNT == 1:
+                payload = {"metadata": metadata, **state["block_captures"][CAPTURE_BLOCK]}
+            else:
+                payload = {
+                    "metadata": metadata,
+                    "blocks": {
+                        str(index): state["block_captures"][index]
+                        for index in sorted(state["block_captures"])
+                    },
+                }
+        else:
+            if set(state["block_boundary"]) != {"inputs", "outputs"}:
+                raise RuntimeError("Qwen transformer block boundary capture was not recorded")
+            payload = {
+                "metadata": {
+                    "schema_version": "kindred.comfyui.qwen_block_boundary_capture.v1",
+                    "torch": torch.__version__,
+                    "profile_forward": TARGET_FORWARD,
+                    "block": CAPTURE_BLOCK,
+                    "block_count": CAPTURE_BLOCK_COUNT,
+                },
+                **state["block_boundary"],
+            }
         CAPTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save(payload, CAPTURE_PATH)
-        print(f"Kindred Qwen MLP capture written: {CAPTURE_PATH}", flush=True)
+        print(f"Kindred Qwen {CAPTURE_KIND} capture written: {CAPTURE_PATH}", flush=True)
     return result
 
 

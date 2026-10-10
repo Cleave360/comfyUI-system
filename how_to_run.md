@@ -198,6 +198,30 @@ pad-to-48 result was slower and failed fixed-seed parity; do not enable it in
 the normal stack. Full commands, hashes, and results are in
 `docs/QWEN_MPS_PROFILE.md`.
 
+For the larger retained-runtime experiment, use
+`KINDRED_QWEN_CAPTURE_KIND=block` with
+`KINDRED_QWEN_CAPTURE_BLOCK_COUNT=1` or `2`. Use `block_boundary` with a count of
+60 to capture only the first input and final output, without duplicating the
+model weights. Benchmark the exact ComfyUI comparator first, then supply its
+report to MLX:
+
+```bash
+.venv/bin/python scripts/benchmark_qwen_block_torch.py \
+  --capture reports/captures/qwen_blocks0_59_boundary.pt \
+  --model models/diffusion_models/qwen_image_2512_bf16.safetensors \
+  --output reports/benchmarks/qwen_blocks0_59_torch.json
+
+reports/venvs/qwen-mlx/bin/python scripts/benchmark_qwen_block.py \
+  --capture reports/captures/qwen_blocks0_59_boundary.pt \
+  --torch-baseline reports/benchmarks/qwen_blocks0_59_torch.json \
+  --model models/diffusion_models/qwen_image_2512_bf16.safetensors \
+  --model-sha256 cbf55390fff27dbc785046d7007b04e0c5dd7421e7ef128f2831eacb53a8e075 \
+  --skip-int8 --output reports/benchmarks/qwen_blocks0_59.json
+```
+
+The full-stack MLX result is diagnostic and rejected for production; see the
+profile document for its performance and accumulated-error boundaries.
+
 Check listening ports after startup:
 
 ```bash

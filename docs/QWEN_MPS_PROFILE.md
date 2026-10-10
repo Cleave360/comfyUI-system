@@ -155,10 +155,71 @@ Local ignored evidence:
 
 ## Decision
 
-All five planned checks are complete. The capture and comparison infrastructure
-is retained for future PyTorch/MLX releases, but none of the tested candidates
-should be enabled in production. The next credible acceleration target is a
-larger fused region within one runtime (at least a complete transformer block),
-or a full retained-weight MLX Qwen-Image implementation that eliminates all
-framework crossings. Either still needs fixed-seed latent/image gates and a
-governed end-to-end improvement before promotion.
+All five initial checks are complete. The capture and comparison infrastructure
+is retained for future PyTorch/MLX releases, but none of the initial candidates
+should be enabled in production.
+
+## Complete-block and retained-stack experiment
+
+The next experiment tested the larger fused region directly. The profiler can
+now capture either a complete real block, a contiguous block range, or only the
+input/output boundaries of the 60-block stack. The boundary form avoids making
+a second 38 GiB copy of the model: the benchmark loads block weights directly
+from the verified `qwen_image_2512_bf16.safetensors` artifact.
+
+The authoritative comparator reconstructs ComfyUI's actual
+`QwenImageTransformerBlock`, including its selected MPS attention backend. It
+reproduced every captured BF16 output exactly. `scripts/benchmark_qwen_block.py`
+then retained all MLX weights, used fused MLX scaled-dot-product attention, and
+tested eager and whole-graph-compiled execution. All timings synchronize the
+device and exclude model loading and compilation:
+
+| Real region | Exact PyTorch MPS | MLX BF16 eager | MLX BF16 compiled | Compiled speedup |
+|---|---:|---:|---:|---:|
+| Block 30 | 28.831 ms | 29.768 ms | 27.772 ms | 1.0381x |
+| Blocks 30-31 | 57.121 ms | 58.839 ms | 55.070 ms | 1.0372x |
+| Blocks 0-59 | 1702.056 ms | 1896.641 ms | 1688.995 ms | 1.0077x |
+
+The small compiled advantage did not scale. A complete 60-block transformer
+pass saves only 13.061 ms in this optimistic retained-weight measurement. The
+stock CFG workflow performs 40 such passes for 20 diffusion steps, so the
+analytical ceiling is about 0.522 seconds per image before any PyTorch/MLX
+handoff, input/output projections, scheduler, VAE, or text-encoder cost.
+
+Numerical drift also accumulated across the residual stack:
+
+| Region | Image relative L2 | Text relative L2 | Image cosine | Text cosine |
+|---|---:|---:|---:|---:|
+| Block 30, compiled BF16 | 0.003435 | 0.003225 | 0.999994 | 0.999995 |
+| Blocks 30-31, compiled BF16 | 0.005384 | 0.002574 | 0.999986 | 0.999997 |
+| Blocks 0-59, compiled BF16 | 0.014441 | 0.053315 | 0.999943 | 0.998690 |
+
+Compiled INT8 was also tested at one and two blocks. It gained only 1.0187x at
+one block and regressed to 0.9215x across two, with larger error, so the 60-block
+INT8 run was deliberately skipped.
+
+The full retained MLX port is therefore rejected before end-to-end integration:
+its best-case performance gain is below one percent at the tested stack, bridge
+cost is excluded, and it already fails exact parity with material accumulated
+error. This is a component result, not an image-quality claim; no MLX output was
+promoted into the production diffusion loop.
+
+Local ignored evidence:
+
+- One-block capture / exact Torch / MLX SHA-256:
+  `77ed512e9cfc2e28fb72a39d1afdf1ce088b6fc272e92ed9e62de2d508e29fc1` /
+  `8557aac3a7518e1f0edeea06cbe9d5a7b612a05a372df91f47a44131a79a3e1b` /
+  `618452dec1fcb459f09365330e4fd5bd66b382dbf2bef8a9d839326533740214`
+- Two-block capture / exact Torch / MLX SHA-256:
+  `e33c5537ba0c0edce5bb964947920ae3335380ee5fbb49f0ddda18f36cf36aac` /
+  `2f500373b7ce30f549dacd14704e798e577715f6c7093c2c448de2d7c6d01f0b` /
+  `6b3c838545149c26dfc31e5d75d7c85531737ec80ae22b4a1717150cdedcb4cd`
+- Full-stack boundary / exact Torch / MLX SHA-256:
+  `30a58e4d8fcc143c7bd748ce67a6312694eca82d1fdc6d7591318649c4789d9c` /
+  `73b2e504dd5dd7ee2b973b9e26240e6f65f6d091de3c163b24cf93ce034011de` /
+  `20792b34a106cbd9c9e148e36fe9cb1620370a4fc7a00a0cf9b2d34f573734e9`
+
+The remaining credible paths are PyTorch-native MPS improvements that preserve
+the exact execution graph, or an explicitly quality-changing route such as a
+distilled/fewer-step Qwen workflow. The latter must be evaluated as a separate
+quality-versus-latency product decision, not described as a kernel speedup.

@@ -13,6 +13,11 @@ def test_qwen_profiler_wrapper_is_syntax_valid_and_bounded():
     ast.parse(source)
     assert "TARGET_FORWARD" in source
     assert "CAPTURE_BLOCK" in source
+    assert "CAPTURE_KIND" in source
+    assert "CAPTURE_BLOCK_COUNT" in source
     assert "qwen_mlp_capture.v1" in source
+    assert "qwen_block_capture.v1" in source
+    assert "qwen_block_range_capture.v1" in source
+    assert "qwen_block_boundary_capture.v1" in source
     assert 'state["active"] = False' in source
     assert "mps_synchronized_boundaries" in source
