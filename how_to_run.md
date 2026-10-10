@@ -219,6 +219,32 @@ reports/venvs/qwen-mlx/bin/python scripts/benchmark_qwen_block.py \
   --skip-int8 --output reports/benchmarks/qwen_blocks0_59.json
 ```
 
+The MLX-examples follow-up retained a read-only residual probe and a deliberately
+isolated cache experiment. Start the probe on a free experimental port, then run
+one governed `qwen-quality` render against it:
+
+```bash
+KINDRED_QWEN_RESIDUAL_REPORT=reports/profiles/qwen_residual_probe.json \
+  .venv/bin/python scripts/qwen_residual_probe_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory "$PWD/reports/runtime/qwen-residual/user"
+```
+
+The quality-changing cache harness requires explicit sigma values. The only
+measured candidate so far is the conservative single-step trial below:
+
+```bash
+KINDRED_QWEN_CACHE_SKIP_SIGMAS=0.2562 \
+KINDRED_QWEN_CACHE_REPORT=reports/profiles/qwen_residual_cache_one_step.json \
+  .venv/bin/python scripts/qwen_residual_cache_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch --user-directory "$PWD/reports/runtime/qwen-residual/user"
+```
+
+Do not substitute this harness for the normal ComfyUI server. It deliberately
+changes the numerical output and has only two same-seed image comparisons; see
+`docs/QWEN_MPS_PROFILE.md` for results and proof limits.
+
 The full-stack MLX result is diagnostic and rejected for production; see the
 profile document for its performance and accumulated-error boundaries.
 

@@ -223,3 +223,59 @@ The remaining credible paths are PyTorch-native MPS improvements that preserve
 the exact execution graph, or an explicitly quality-changing route such as a
 distilled/fewer-step Qwen workflow. The latter must be evaluated as a separate
 quality-versus-latency product decision, not described as a kernel speedup.
+
+## MLX examples review and residual-cache probe
+
+The current [`ml-explore/mlx-examples`](https://github.com/ml-explore/mlx-examples)
+implementations were reviewed after the retained-stack result. Their
+[FLUX layers](https://github.com/ml-explore/mlx-examples/blob/main/flux/flux/layers.py)
+use fused MLX attention and a small shapeless-compiled RoPE helper, but the
+pipeline does not compile the entire denoising model. The
+[WAN 2.1 pipeline](https://github.com/ml-explore/mlx-examples/blob/main/video/wan2.1/wan/pipeline.py)
+adds three relevant techniques: compiling the complete flow model with its
+state, using asynchronous evaluation around the sampler update, and TeaCache
+residual reuse. The first two do not remove Qwen's dominant 60-block dependency
+chain; our retained whole-stack compile already measured their plausible
+compute ceiling. TeaCache is materially different because it avoids selected
+transformer passes rather than making each pass marginally cheaper.
+
+`scripts/qwen_residual_probe_server.py` therefore measured, without changing
+the render, the image and text residual across the complete 60-block stack for
+all 40 positive/negative forwards in one governed 20-step render. Consecutive
+image residuals within each conditioning stream had:
+
+- cosine similarity from 0.998565 to 0.999953;
+- median relative L2 change of 0.1397;
+- minimum relative L2 change of 0.01868 at sigma 0.256198.
+
+That minimum was consistent across the 37-token and 42-token conditioning
+streams. It justified one bounded intervention, not a general cache threshold.
+`scripts/qwen_residual_cache_server.py` reused the preceding residual only at
+sigma 0.2562. It skipped exactly two transformer forwards (one per stream),
+each taking about 0.03 seconds for framing instead of running 60 blocks. A warm
+candidate render completed in 69.445 seconds, consistent with removing roughly
+one of 20 sampler steps from the established 72.454-second warm baseline, but a
+single non-interleaved run is not a promotion-quality speed measurement.
+
+The intervention is not numerically exact. Against stock same-seed renders:
+
+| Seed | RGB MAE | RMSE | PSNR | Pixels changed |
+|---:|---:|---:|---:|---:|
+| 5363 | 2.703 | 5.052 | 34.06 dB | 94.39% |
+| 5364 | 3.131 | 5.593 | 33.18 dB | 95.80% |
+
+Both candidate images remained valid and looked closely matched on inspection,
+but this is only two-image evidence. The cache remains an isolated experiment.
+It is not enabled in production, and the upstream WAN polynomial/threshold must
+not be copied because its calibration is model- and resolution-specific.
+
+Local ignored evidence:
+
+- Residual probe JSON SHA-256:
+  `4a504d2719eb39bddca2fa80c41597a5254738ac03e7265e5eb29bceb17d7fb3`
+- Seed-5363 cache profile / benchmark SHA-256:
+  `1fa6bb6f696fb40bb132ac9d8f2b7971b9c3ded8812bb64f5dd7339ec15db37d` /
+  `3836117bf151e94992b7026309100e372664fce836df5e4c8629009c10047033`
+- Seed-5364 candidate / stock benchmark SHA-256:
+  `9b89abb546c159a8866a20183342d25f31983cef509a980416ba2e48000c326d` /
+  `87f0993a2a2eb80f0bf06814c9c611acece65af53f6510acba736fe7ec9fd3eb`
