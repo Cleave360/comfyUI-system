@@ -124,7 +124,7 @@ def main() -> int:
 
     captured = torch.load(args.capture, map_location="cpu", weights_only=False)
     native = json.loads(args.torch_report.read_text(encoding="utf-8"))
-    samples = captured["samples"].float()
+    samples = captured["samples"].to(torch.bfloat16).float()
     mean = torch.tensor(MEAN).view(1, 16, 1, 1, 1)
     std = torch.tensor(STD).view(1, 16, 1, 1, 1)
     normalized = ((samples - mean) / std).permute(0, 2, 3, 4, 1)[0].contiguous()
@@ -211,7 +211,7 @@ def main() -> int:
         "method": {
             "warmups": args.warmups,
             "iterations": args.iterations,
-            "input_normalization": "Wan21 process_in inverse of captured process_out",
+            "input_normalization": "BF16-rounded raw latent then Wan21 process_in inverse",
             "torch_to_mlx": "mx.asarray(torch_mps_tensor, copy=False)",
             "mlx_to_torch": "torch.as_tensor(mlx_array)",
             "complete_round_trip_timed": True,

@@ -1,0 +1,7 @@
+# Isolated Apple Silicon Qwen/MLX experiment runtime.
+# ComfyUI's non-Torch dependencies are borrowed read-only from production .venv.
+mlx==0.32.3
+numpy==2.5.3
+pillow==12.3.0
+torch==2.12.1
+torchvision==0.27.1

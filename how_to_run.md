@@ -223,6 +223,17 @@ PyTorch 2.12 reopens zero-copy Torch MPS/MLX interoperability. Keep that newer
 runtime isolated from production and verify the bridge before using it:
 
 ```bash
+UV_CACHE_DIR=reports/.uv-cache uv venv --python 3.12 \
+  reports/venvs/qwen-mlx-torch212
+UV_CACHE_DIR=reports/.uv-cache uv pip install \
+  --python reports/venvs/qwen-mlx-torch212/bin/python \
+  -r requirements-qwen-mlx-torch212.txt
+
+git clone https://github.com/ml-explore/mlx-examples.git \
+  reports/vendor/mlx-examples
+git -C reports/vendor/mlx-examples checkout \
+  796f5b53cab69a3d48a44233ce21aae889e94a08
+
 MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
   scripts/benchmark_mps_mlx_zero_copy.py \
   --warmups 3 --iterations 9 --handoff-iterations 50
@@ -255,9 +266,40 @@ MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
   scripts/benchmark_qwen_vae_mlx.py --warmups 2 --iterations 7
 ```
 
-The measured MLX decoder passed the isolated trial gates at 2.9996x the native
-VAE speed, but it is not bit-exact and is not wired into the production server.
-See `docs/QWEN_MPS_PROFILE.md` for the quality, memory, and promotion boundary.
+The measured component decoder passed the isolated gates at 2.0676x native VAE
+speed after matching ComfyUI's BF16 input boundary. It is not bit-exact.
+
+For the end-to-end opt-in trial, create the runtime directory and launch the
+isolated server with the exact eight-run mode sequence:
+
+```bash
+mkdir -p reports/runtime/qwen-mlx-vae-e2e/user
+MLX_ENABLE_TF32=0 \
+KINDRED_QWEN_MLX_VAE_RUN_MODES=stock,stock,stock,mlx,mlx,stock,stock,mlx \
+KINDRED_QWEN_MLX_VAE_REPORT="$PWD/reports/profiles/qwen_mlx_vae_e2e_full_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/qwen_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/qwen-mlx-vae-e2e/user"
+```
+
+In another terminal, run the governed alternating comparison:
+
+```bash
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_qwen_mlx_vae_e2e.py \
+  --base-url http://127.0.0.1:8288 --seeds 7460,7461,7462 \
+  --steps 20 --cooldown-seconds 5 --timeout 1800 \
+  --server-report reports/profiles/qwen_mlx_vae_e2e_full_server.json \
+  --output reports/benchmarks/qwen_mlx_vae_e2e_full.json
+```
+
+The three-seed sweep passed the fixed quality and direct VAE speed gates. Keep
+this server experimental: it deliberately blocks the ABI-incompatible
+production torchaudio package, borrows other production dependencies read-only,
+and does not establish a full-workflow speedup. See `docs/QWEN_MPS_PROFILE.md`
+for the exact results and boundary.
 
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run

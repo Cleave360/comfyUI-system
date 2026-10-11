@@ -18,6 +18,8 @@ def test_native_qwen_vae_benchmark_is_synchronized_and_atomic():
     assert "kindred.comfyui.qwen_vae_torch.v1" in value
     assert "torch.mps.synchronize()" in value
     assert "model_loading_excluded_from_measured_iterations" in value
+    assert "args.output = args.output.resolve()" in value
+    assert '"pixel_error_vs_capture": pixel_error' in value
     assert "temporary.replace(destination)" in value
 
 

@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import statistics
@@ -64,6 +65,9 @@ def main() -> int:
         default=ROOT / "reports" / "benchmarks" / "qwen_vae_torch251.json",
     )
     args = parser.parse_args()
+    args.capture = args.capture.resolve()
+    args.weights = args.weights.resolve()
+    args.output = args.output.resolve()
     if args.warmups < 0 or args.iterations < 1:
         raise SystemExit("warmups must be non-negative and iterations must be positive")
     if not args.capture.is_file() or not args.weights.is_file():
@@ -104,7 +108,19 @@ def main() -> int:
         torch.mps.synchronize()
         timings.append((time.perf_counter() - started) * 1000)
 
-    exact_capture_match = bool(torch.equal(output.cpu(), captured["output"]))
+    output_cpu = output.cpu()
+    reference = captured["output"].float()
+    delta = output_cpu.float() - reference
+    mse = float(torch.mean(delta * delta))
+    pixel_error = {
+        "mae_float01": float(torch.mean(torch.abs(delta))),
+        "mae_rgb255": float(torch.mean(torch.abs(delta))) * 255.0,
+        "rmse_float01": math.sqrt(mse),
+        "max_abs_float01": float(torch.max(torch.abs(delta))),
+        "psnr_db": math.inf if mse == 0 else 10.0 * math.log10(1.0 / mse),
+        "changed_fraction": float(torch.mean((delta != 0).float())),
+    }
+    exact_capture_match = bool(torch.equal(output_cpu, captured["output"]))
     report = {
         "schema_version": "kindred.comfyui.qwen_vae_torch.v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -132,6 +148,7 @@ def main() -> int:
         "cold_decode_ms": round(cold_ms, 3),
         "warm_decode": summarize(timings),
         "exact_capture_match": exact_capture_match,
+        "pixel_error_vs_capture": pixel_error,
     }
     atomic_write_json(args.output, report)
     print(json.dumps(report, indent=2))

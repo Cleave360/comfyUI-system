@@ -356,21 +356,58 @@ iteration, and includes the normal ComfyUI CPU input and CPU output boundaries:
 | Decoder | Warm median (7 runs) | Relative speed | Output parity |
 |---|---:|---:|---|
 | ComfyUI PyTorch 2.5.1 MPS BF16 | 1028.395 ms | 1.0000x | Exact capture match |
-| Official MLX Wan VAE, strict precision | 342.841 ms | **2.9996x** | MAE 0.630 RGB levels; 43.747 dB PSNR |
+| Official MLX Wan VAE, strict precision | 497.382 ms | **2.0676x** | MAE 0.573 RGB levels; 44.624 dB PSNR |
 
-The MLX path saved 685.554 ms per image at this resolution. It passed all
+The corrected MLX path first rounds the raw latent to BF16, matching ComfyUI's
+native VAE boundary, before converting it back to the normalized form expected
+by the official MLX wrapper. It saved 531.013 ms per image in the isolated
+component run. It passed all
 predeclared trial gates: exact shape, finite output, mean error no greater than
 one RGB level, PSNR at least 40 dB, speedup at least 1.05x, and peak MLX memory
 below 12 GiB. Observed warm MLX peak memory was 9.01 GiB. The output is not
 bit-exact: 99.967% of float pixels differ and the maximum single-channel error
-was 0.19949, despite the low aggregate error. This is therefore a strong
+was 0.21691, despite the low aggregate error. This is therefore a strong
 component result, not yet a production promotion or a perceptual-quality claim.
 
 At the current roughly 72-second full workflow, the direct still-image saving
 is under one second. The result becomes more important for multi-frame/video
 decoding and establishes the first measured MLX region with a material speed
-advantage. Production remains on PyTorch 2.5.1; an end-to-end trial requires an
-isolated full ComfyUI environment on PyTorch 2.12 and an opt-in decoder hook.
+advantage. Production remains on PyTorch 2.5.1.
+
+### Isolated end-to-end decoder hook
+
+`scripts/qwen_mlx_vae_server.py` runs ComfyUI under the ignored Torch 2.12/MLX
+environment and borrows only non-Torch dependencies from production `.venv`.
+It routes only a 16-channel `WanVAE`, fails closed on tiled/options-based
+decoding, records every mode and tensor hash, and returns CPU output exactly as
+the normal ComfyUI boundary does. The production server and environment are
+not modified. Audio extras are unavailable in this experimental runtime because
+the production torchaudio binary is intentionally blocked as ABI-incompatible;
+the Qwen image workflow does not use those nodes.
+
+A two-step same-process negative control established that VAE error is
+latent-distribution dependent: the candidate reached only 1.566 RGB MAE and
+37.23 dB, failing the fixed 1.0/40 dB gate. Eager BF16 and FP32 variants were
+worse, so the quality threshold was not relaxed.
+
+The decisive governed sweep used three 20-step seeds, alternating stock/MLX
+order, plus an exact stock/stock control. A cache-bust node forced the sampler
+to execute on every render. All eight images were valid and all promotion
+gates passed:
+
+| Seed | RGB MAE | PSNR | Maximum error | Changed pixels |
+|---:|---:|---:|---:|---:|
+| 7460 | 0.5320 | 44.44 dB | 54 | 49.91% |
+| 7461 | 0.5354 | 44.68 dB | 37 | 50.52% |
+| 7462 | 0.4429 | 46.24 dB | 50 | 50.09% |
+
+The stock/stock control was pixel-exact. Median direct VAE time was 1.573
+seconds for native Torch and 0.792 seconds for MLX, a 0.781-second saving and
+1.9868x speedup inside the full server. System load varied sharply during the
+sweep, so total-render differences ranged from -41.247 to +0.020 seconds and
+are explicitly not a speed gate. This evidence promotes the decoder only to an
+opt-in isolated candidate. It does not authorize replacing the production
+PyTorch 2.5.1 server or claim a measured full-workflow speedup.
 
 Local ignored evidence:
 
@@ -381,4 +418,8 @@ Local ignored evidence:
 - Native Torch VAE report SHA-256:
   `1fc0f7b630eb8a6c24307cad9a126fdf81baaf4de8a92ae3be821e1133e4eeed`
 - MLX VAE report SHA-256:
-  `b461744da360e04a9bece6589bf87776211dbe683a6b34f955e67ee04eec5a0c`
+  `b3948cc8efb177395beaf4dbde274f074298046f2e284ed23b447b04c859666f`
+- End-to-end sweep report SHA-256:
+  `3ad3b16536a08db3d11cfc9de287442b25336fa3af45d365d678db99834f1145`
+- End-to-end server ledger SHA-256:
+  `f9bbfc129b52d9541fefcd0ab999a03c7c4d779db7b23a62d1c0a85dc09e9bc3`
