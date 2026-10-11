@@ -318,3 +318,33 @@ Evidence:
   `b46437652284dd7a27d521bc9737e2a8f70f231798ac2d8b38c5d71a6dfe172a`,
   `22f204aaea64e4348f292574687d161d8a95892bdd9ab9923a0076f204c82568`,
   and `7e71fc639946233029ac931b9b4a2f62e5b0395f53ea43f970c153f7a9667c93`.
+
+## 2026-10-11 — Mixed Qwen/Wan Soak and Audio Restoration
+
+Current repo position:
+- The isolated Torch 2.12.1 requirements now pin stable-ABI TorchAudio 2.11.0.
+  Direct resampling passed, ComfyUI loaded its audio extras without import
+  failures, and a governed `EmptyAudio -> SaveAudio` workflow succeeded.
+- One process completed Qwen/Wan warm-ups followed by six strictly alternating
+  measured pairs. Every workflow was valid, all six Qwen pixel hashes matched,
+  and all six 17-frame Wan pixel hashes matched.
+- Memory gates passed: zero Torch driver growth, zero retained MLX cache,
+  13.596 GiB MLX peak, and no process-RSS growth.
+- Timing p95 gates failed. Qwen total p95/median was 1.709 and Wan was 1.492;
+  sampler ratios were 1.881 and 1.671. The large excursion was concentrated in
+  pair two, after which both workloads recovered. Last-half/first-half ratios
+  were 0.974 for Qwen and 0.928 for Wan, so monotonic-drift gates passed.
+
+Decisions and boundaries:
+- Audio compatibility is restored for the isolated runtime, but mixed-workload
+  timing stability is not accepted. Do not promote it to production.
+- Treat the result as an oscillatory sustained-load/model-switching problem,
+  not a correctness or allocator-retention failure.
+- The next discriminator should compare process isolation or a recovery-aware
+  queue policy against this exact mixed sequence.
+
+Evidence:
+- Mixed soak / server / isolated requirements SHA-256:
+  `9bf5981684289ace594664bba46cdbb915083491045ffd8e888b160700ffc277`,
+  `af2100b26ca12f704cd56c1f00635cc49f7303893c8f8dca6245ec6e90124702`,
+  and `fd9831937967576a6b8c90145f604efec73dbf475dfe99ff4c2c6f1bee4b138b`.

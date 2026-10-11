@@ -54,9 +54,16 @@ sys.path.append(str(production_sites[0]))
 sys.path.insert(0, str(SOURCE))
 os.chdir(SOURCE)
 
-# Do not let the fallback environment expose a torchaudio binary built for
-# production Torch 2.5.1. The Qwen image route does not use audio nodes.
-sys.modules["torchaudio"] = None
+# TorchAudio 2.11 uses PyTorch's stable ABI for Torch 2.11 and later. Fail
+# closed instead of borrowing the production environment's older binary.
+torch_package_version = importlib.metadata.version("torch").split("+", 1)[0]
+torchaudio_package_version = importlib.metadata.version("torchaudio").split("+", 1)[0]
+torch_major_minor = tuple(int(value) for value in torch_package_version.split(".")[:2])
+if torchaudio_package_version != "2.11.0" or torch_major_minor < (2, 11):
+    raise SystemExit(
+        "isolated audio runtime requires torchaudio 2.11.0 and torch >= 2.11: "
+        f"torch={torch_package_version}, torchaudio={torchaudio_package_version}"
+    )
 import main as comfy_main  # noqa: E402 - lets ComfyUI own its Torch import order
 import mlx.core as mx  # noqa: E402
 import torch  # noqa: E402
@@ -158,6 +165,7 @@ def write_report() -> None:
         "runtime": {
             "python": sys.version.split()[0],
             "torch": torch.__version__,
+            "torchaudio": torchaudio_package_version,
             "mlx": importlib.metadata.version("mlx"),
             "mps_available": torch.backends.mps.is_available(),
             "mlx_device": str(mx.default_device()),

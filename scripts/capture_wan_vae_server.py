@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import importlib.metadata
 import os
 from pathlib import Path
 import runpy
@@ -25,16 +26,22 @@ if not CAPTURE_PATH.is_absolute():
 sys.path.insert(0, str(SOURCE))
 os.chdir(SOURCE)
 
-# The newer-Torch experiment keeps its own Torch/torchvision first, then borrows
-# ComfyUI's pure-Python dependencies from the production environment. Never load
-# the production torchaudio binary into an ABI-incompatible Torch process.
+# The newer-Torch experiment keeps its own Torch packages first, then borrows
+# ComfyUI's pure-Python dependencies from the production environment.
 PRODUCTION_VENV = (ROOT / ".venv").resolve()
 if not Path(sys.executable).resolve().is_relative_to(PRODUCTION_VENV):
     production_sites = sorted((PRODUCTION_VENV / "lib").glob("python*/site-packages"))
     if len(production_sites) != 1:
         raise SystemExit("expected exactly one production site-packages directory")
     sys.path.append(str(production_sites[0]))
-    sys.modules["torchaudio"] = None
+    torch_version = importlib.metadata.version("torch").split("+", 1)[0]
+    torchaudio_version = importlib.metadata.version("torchaudio").split("+", 1)[0]
+    torch_major_minor = tuple(int(value) for value in torch_version.split(".")[:2])
+    if torchaudio_version != "2.11.0" or torch_major_minor < (2, 11):
+        raise SystemExit(
+            "isolated audio runtime requires torchaudio 2.11.0 and torch >= 2.11: "
+            f"torch={torch_version}, torchaudio={torchaudio_version}"
+        )
 
 import comfy.options  # noqa: E402
 

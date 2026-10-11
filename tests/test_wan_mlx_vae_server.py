@@ -37,3 +37,7 @@ def test_wan_mlx_server_fails_closed_and_records_memory():
     assert '"mlx_cache_memory_bytes"' in value
     assert "temporary.replace(REPORT_PATH)" in value
     assert "KindredCacheBustLatent" in value
+    assert 'importlib.metadata.version("torchaudio")' in value
+    assert 'torchaudio_package_version != "2.11.0"' in value
+    assert "torch_major_minor < (2, 11)" in value
+    assert '"torchaudio": torchaudio_package_version' in value

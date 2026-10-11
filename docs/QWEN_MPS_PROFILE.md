@@ -381,9 +381,9 @@ environment and borrows only non-Torch dependencies from production `.venv`.
 It routes only a 16-channel `WanVAE`, fails closed on tiled/options-based
 decoding, records every mode and tensor hash, and returns CPU output exactly as
 the normal ComfyUI boundary does. The production server and environment are
-not modified. Audio extras are unavailable in this experimental runtime because
-the production torchaudio binary is intentionally blocked as ABI-incompatible;
-the Qwen image workflow does not use those nodes.
+not modified. Audio extras were unavailable during this trial because the
+production torchaudio binary was ABI-incompatible. The later mixed-workload
+soak restored them with the stable-ABI TorchAudio 2.11 package.
 
 A two-step same-process negative control established that VAE error is
 latent-distribution dependent: the candidate reached only 1.566 RGB MAE and
@@ -570,8 +570,9 @@ corresponding MPS implementation and failed after two sampling steps. A direct
 solution under the isolated PyTorch 2.12.1 environment, and the unchanged
 UniPC workflow then completed all four steps. It produced 17 finite, non-flat
 frames in 56.209 seconds. This supports an isolated runtime-upgrade candidate,
-not a ComfyUI sampler fork or an in-place production upgrade. The experimental
-runtime deliberately blocks the ABI-incompatible production torchaudio binary.
+not a ComfyUI sampler fork or an in-place production upgrade. At this stage the
+experimental runtime still blocked the incompatible production torchaudio
+binary; the later mixed-workload soak replaced it with TorchAudio 2.11.
 
 The captured native latent and exact Wan weights then passed the original
 decoder gates with the cache-consuming, spatial-resample-chunked MLX path:
@@ -691,3 +692,37 @@ Local ignored evidence SHA-256:
 - MLX, 2-second gap: `22f204aaea64e4348f292574687d161d8a95892bdd9ab9923a0076f204c82568`
 - MLX plus cache clear: `7e71fc639946233029ac931b9b4a2f62e5b0395f53ea43f970c153f7a9667c93`
 - Passing candidate server ledger: `f7e93b42adc229f36c32e0f8d5cc569636404f4812b802191201b0871ea73dca`
+
+### Mixed image/video soak and restored audio runtime
+
+The isolated dependency set now pins `torchaudio==2.11.0`. TorchAudio 2.11 uses
+PyTorch's stable ABI and supports Torch 2.11 and later, so the server accepts
+only TorchAudio 2.11 with Torch >=2.11 and fails closed otherwise. Under Torch
+2.12.1, a direct resample control passed, all ComfyUI audio extras loaded, and a
+governed `EmptyAudio -> SaveAudio` workflow completed successfully.
+
+The longer same-process soak then alternated full Qwen Image 2512 and Wan VACE
+1.3B workflows. After one warm-up of each type, it ran six measured pairs: six
+20-step 1024x576 Qwen renders and six four-step 832x480/17-frame Wan renders.
+Every dispatch passed governance and produced valid output. Decoded RGB pixel
+hashes were identical across all six repetitions of each workload.
+
+The soak failed only its predeclared p95 timing gates:
+
+| Workload | Total median | Total range | Total p95/median | Sampler median | Sampler range | Sampler p95/median | Last-half / first-half |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen image | 158.646 s | 124.456-271.105 s | **1.709 fail** | 126.468 s | 93.330-237.948 s | **1.881 fail** | 0.974 |
+| Wan video | 75.285 s | 72.390-112.358 s | **1.492 fail** | 31.484 s | 29.536-52.602 s | **1.671 fail** | 0.928 |
+
+The worst excursion occurred in the second measured pair; subsequent pairs
+recovered to a slower but stable plateau. Consequently the drift gates passed
+even though the p95 gates failed. Torch driver growth was zero, retained MLX
+cache was zero, process RSS fell as the final Wan model replaced Qwen, and MLX
+peak memory was 13.596 GiB. This is a timing-variance rejection, not a
+correctness, audio, or memory rejection. Production remains unchanged.
+
+Local ignored evidence SHA-256:
+
+- Mixed soak report: `9bf5981684289ace594664bba46cdbb915083491045ffd8e888b160700ffc277`
+- Mixed soak server ledger: `af2100b26ca12f704cd56c1f00635cc49f7303893c8f8dca6245ec6e90124702`
+- Isolated dependency specification: `fd9831937967576a6b8c90145f604efec73dbf475dfe99ff4c2c6f1bee4b138b`

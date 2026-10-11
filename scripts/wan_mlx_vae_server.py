@@ -48,8 +48,8 @@ if CLEANUP_POLICY not in {"none", "torch_empty_cache"}:
 if not WEIGHTS_PATH.is_file():
     raise SystemExit(f"Wan VAE weights not found: {WEIGHTS_PATH}")
 
-# Keep isolated Torch/torchvision first and borrow only pure-Python production
-# dependencies. Production torchaudio is ABI-incompatible with Torch 2.12.
+# Keep isolated Torch packages first and borrow only pure-Python production
+# dependencies. TorchAudio 2.11 uses PyTorch's stable ABI for Torch >= 2.11.
 production_sites = sorted((ROOT / ".venv" / "lib").glob("python*/site-packages"))
 if len(production_sites) != 1:
     raise SystemExit("expected exactly one production site-packages directory")
@@ -57,7 +57,15 @@ sys.path.append(str(production_sites[0]))
 sys.path.insert(0, str(SOURCE))
 sys.path.insert(0, str(ROOT / "scripts"))
 os.chdir(SOURCE)
-sys.modules["torchaudio"] = None
+
+torch_package_version = importlib.metadata.version("torch").split("+", 1)[0]
+torchaudio_package_version = importlib.metadata.version("torchaudio").split("+", 1)[0]
+torch_major_minor = tuple(int(value) for value in torch_package_version.split(".")[:2])
+if torchaudio_package_version != "2.11.0" or torch_major_minor < (2, 11):
+    raise SystemExit(
+        "isolated audio runtime requires torchaudio 2.11.0 and torch >= 2.11: "
+        f"torch={torch_package_version}, torchaudio={torchaudio_package_version}"
+    )
 
 import main as comfy_main  # noqa: E402 - ComfyUI owns Torch initialization
 import mlx.core as mx  # noqa: E402
@@ -174,6 +182,7 @@ def write_report() -> None:
         "runtime": {
             "python": sys.version.split()[0],
             "torch": torch.__version__,
+            "torchaudio": torchaudio_package_version,
             "mlx": importlib.metadata.version("mlx"),
             "mps_available": torch.backends.mps.is_available(),
             "mlx_device": str(mx.default_device()),

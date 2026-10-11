@@ -295,11 +295,11 @@ ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
   --output reports/benchmarks/qwen_mlx_vae_e2e_full.json
 ```
 
-The three-seed sweep passed the fixed quality and direct VAE speed gates. Keep
-this server experimental: it deliberately blocks the ABI-incompatible
-production torchaudio package, borrows other production dependencies read-only,
-and does not establish a full-workflow speedup. See `docs/QWEN_MPS_PROFILE.md`
-for the exact results and boundary.
+The three-seed sweep passed the fixed quality and direct VAE speed gates. The
+isolated requirements now install stable-ABI TorchAudio 2.11 rather than
+borrowing production's incompatible binary. Keep this server experimental: it
+still borrows other production dependencies read-only and does not establish a
+full-workflow speedup. See `docs/QWEN_MPS_PROFILE.md` for the exact boundary.
 
 To reproduce the temporal decoder trial, first collect a second real 20-step
 endpoint with the capture server. Use an absolute capture path; the launcher
@@ -457,7 +457,7 @@ end-to-end wins, 13.596 GiB peak, and zero retained MLX cache. Timing became
 strongly non-stationary under the shared machine load, so use the 4.011-second
 least-contended pair saving rather than the inflated 72.273-second median as
 the practical reference. Stop port 8288 after the run; this remains an isolated
-experimental server with audio nodes unavailable.
+experimental server. Audio nodes require the current pinned TorchAudio 2.11.
 
 To reproduce the endurance diagnosis, use eight identical modes, then run two
 warm-ups and six fixed-seed measurements. The passing isolated candidate uses
@@ -490,6 +490,36 @@ growth. For diagnosis, set all modes to `stock`, set the cleanup policy to
 `none` or `torch_empty_cache`, or use a 30-second cooldown. The complete
 five-configuration comparison and evidence hashes are in `docs/QWEN_MPS_PROFILE.md`.
 This is not the production startup path.
+
+To reproduce the longer mixed-workload soak, configure seven MLX Wan decodes:
+one video warm-up and six measured videos. The client first runs a governed
+audio smoke, then alternates full 20-step Qwen images and four-step Wan videos:
+
+```bash
+mkdir -p reports/runtime/mixed-image-video-soak/user
+MLX_ENABLE_TF32=0 \
+KINDRED_WAN_MLX_VAE_RUN_MODES=mlx,mlx,mlx,mlx,mlx,mlx,mlx \
+KINDRED_WAN_MPS_CLEANUP_POLICY=torch_empty_cache \
+KINDRED_WAN_MLX_VAE_REPORT="$PWD/reports/profiles/mixed_image_video_soak_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/wan_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/mixed-image-video-soak/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_mixed_image_video_soak.py \
+  --base-url http://127.0.0.1:8288 --pairs 6 \
+  --qwen-steps 20 --wan-steps 4 --cooldown-seconds 2 \
+  --timeout 1800 --sample-interval 2 \
+  --server-report reports/profiles/mixed_image_video_soak_server.json \
+  --output reports/benchmarks/mixed_image_video_soak.json
+```
+
+The first soak passed audio, output determinism, drift, memory, and accounting
+gates but failed p95 timing stability after a large second-pair excursion. Use
+`--reanalyze-only` to recompute decoded-pixel hashes and gates from retained
+outputs without rerunning the workflows. Production remains unchanged.
 
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run

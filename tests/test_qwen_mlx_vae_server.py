@@ -21,6 +21,8 @@ def test_qwen_mlx_vae_server_is_isolated_bounded_and_audited():
     assert '"production_modified": False' in source
     assert "temporary.replace(REPORT_PATH)" in source
     assert "KindredCacheBustLatent" in source
+    assert 'torchaudio_package_version != "2.11.0"' in source
+    assert '"torchaudio": torchaudio_package_version' in source
 
 
 def test_qwen_mlx_vae_server_fails_closed_outside_target_architecture():
@@ -36,5 +38,6 @@ def test_qwen_mlx_experimental_runtime_is_pinned():
         encoding="utf-8"
     )
     assert "torch==2.12.1" in requirements
+    assert "torchaudio==2.11.0" in requirements
     assert "torchvision==0.27.1" in requirements
     assert "mlx==0.32.3" in requirements
