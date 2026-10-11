@@ -198,3 +198,29 @@ Evidence:
   `875ec451cfa1a35bba15932ec1f30f1df5ca02fb3d4132ccc856c1a1831e2062`,
   `3f7c2db5b0d1e7ae79dbcab572f4c7fa491aa313d687763b23d51d241880106b`,
   and `effffbd08d457bccda2aadbaebbd8f9f7df47e6b065bdc5a03fa8d68520aefd1`.
+
+## 2026-10-11 — MLX Temporal Memory Gate Passed
+
+Current repo position:
+- Per-operation telemetry isolated the remaining peak to old/new causal-cache
+  overlap followed by the four-slice final spatial resample.
+- Consuming each cache entry after its single use reduced thirteen-frame peak
+  from 25.045 to 20.579 GiB. Chunking only the non-causal `upsample2d` across
+  temporal slices reduced it to 19.908 GiB.
+- Two independent full sweeps passed every original quality, speed, structure,
+  and 20 GiB memory gate. Thirteen-frame speedups were 2.101x and 2.105x, with
+  byte-identical official-MLX outputs and zero retained allocator cache.
+
+Decisions and boundaries:
+- Promote the cache-consuming/chunked-resample path only to a reproducible
+  component candidate. It is not yet a production or video-quality result.
+- Do not chunk the two causal 3D resamplers; only the final independent spatial
+  resample is split across temporal slices.
+- Next acceptance requires native latents from a real video model and a
+  repeated isolated-server endurance run.
+
+Evidence:
+- Attribution / decisive / repeat report hashes:
+  `987841b69a5a719dc6753b0bcaec4906c275ea69ae89cdd26381c8248da7e02e`,
+  `63846ae6588e46276e98d7fae89e2cd29c93f6ea790f3033626b8ce66ed2e799`,
+  and `8012335a019936d7889d3e0d78cdf7874cdae0037e5dbcf3bdbe8a52b354bb0d`.

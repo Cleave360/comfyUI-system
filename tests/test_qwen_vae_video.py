@@ -51,10 +51,21 @@ def test_video_benchmark_has_bounded_temporal_cache_candidate():
     assert "mx.clear_cache()" in value
     assert '"cache_release_in_timed_boundary"' in value
     assert "def layer_eager_decoder_step" in value
-    assert "mx.eval(value, *new_cache)" in value
+    assert 'evaluated(f"{frame}.head_conv", value, *new_cache)' in value
     assert "def operation_eager_residual" in value
-    assert "mx.eval(shortcut, residual, new_first, new_second)" in value
+    assert 'evaluated(f"{label}.conv2", shortcut, residual, new_first, new_second)' in value
     assert '"spatial_tiled_bounded"' in value
     assert "def spatial_tiled_decoder_step" in value
     assert 'parser.add_argument("--spatial-tile-halo", type=int, default=32)' in value
     assert "seven-pixel tail radius" in value
+    assert 'parser.add_argument("--trace-memory", action="store_true")' in value
+    assert "def summarize_memory_trace" in value
+    assert '"summary_by_peak"' in value
+    assert '"per_operation_memory_trace": args.trace_memory' in value
+    assert '"cache_consuming_bounded"' in value
+    assert "feature_cache[index] = None" in value
+    assert "consume_cache=True" in value
+    assert '"cache_consuming_chunked_resample"' in value
+    assert "def temporal_chunked_spatial_upsample" in value
+    assert 'layer.mode != "upsample2d"' in value
+    assert "chunk_spatial_resample=True" in value

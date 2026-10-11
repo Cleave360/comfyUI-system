@@ -503,3 +503,54 @@ Local ignored evidence:
   `3f7c2db5b0d1e7ae79dbcab572f4c7fa491aa313d687763b23d51d241880106b`
 - Spatial-tail tiled sweep SHA-256:
   `effffbd08d457bccda2aadbaebbd8f9f7df47e6b065bdc5a03fa8d68520aefd1`
+
+### Per-operation attribution and bounded passing candidate
+
+The operation-eager path was instrumented by resetting MLX peak telemetry
+immediately before each explicit evaluation boundary. This perturbs scheduling,
+so a separate untraced sweep remains the authoritative timing and gate result.
+The trace identified `frame3.stage3.residual2.conv2` as the original 25.045 GiB
+peak: 19.972 GiB was already active before that convolution completed. The
+cause was lifecycle overlap, not one exceptionally large output tensor—the
+complete previous temporal-cache list stayed referenced while the replacement
+list was built.
+
+The cache-consuming candidate clears each old cache-list entry immediately
+after its single use. It preserved the official MLX output hashes and reduced
+the thirteen-frame peak to 20.579 GiB. The new maximum moved to the final
+`upsample2d`, which expanded four temporal slices together from
+`[1,4,288,512,192]` to `[1,4,576,1024,96]`.
+
+The final candidate processes that purely spatial resample one temporal slice
+at a time, while leaving both causal 3D upsamplers unchanged. Two independent
+four-iteration sweeps passed every original gate without changing thresholds:
+
+| Output frames | Torch median | MLX median | Speedup | MLX peak | Global RGB MAE |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 1.174 s | 0.697 s | 1.684x | 7.55 GiB | 0.574 |
+| 5 | 4.720 s | 2.620 s | 1.801x | 16.95 GiB | 0.316 |
+| 13 | 11.717 s | 5.577 s | **2.101x** | **19.908 GiB** | 0.262 |
+
+The repeat measured 5.565 seconds, 2.105x, and the identical 19.908 GiB peak.
+All three MLX output hashes were byte-identical to the official reference;
+retained allocator cache was zero; the worst frame remained 0.574 RGB MAE at
+44.62 dB and worst temporal-difference MAE remained 0.661 RGB levels. The
+candidate therefore qualifies as a reproducible component-level pass under the
+predeclared 20 GiB, quality, and speed gates.
+
+This does not prove motion quality, a complete video-generation workflow, or
+production-server stability. Integration remains isolated until a real video
+latent and repeated server workload reproduce the result.
+
+Local ignored evidence:
+
+- Original operation trace SHA-256:
+  `56088f21762be312c6361bc84ed80ccd5e6c3c0ee5e5fc04eae1d2b491442acf`
+- Consume-and-release trace SHA-256:
+  `73869c3b0b4021b6e533d0f23e4ce415e29fa8edb5a0a113673f6d12c54da359`
+- Chunked-resample trace SHA-256:
+  `987841b69a5a719dc6753b0bcaec4906c275ea69ae89cdd26381c8248da7e02e`
+- Decisive full sweep SHA-256:
+  `63846ae6588e46276e98d7fae89e2cd29c93f6ea790f3033626b8ce66ed2e799`
+- Independent repeat SHA-256:
+  `8012335a019936d7889d3e0d78cdf7874cdae0037e5dbcf3bdbe8a52b354bb0d`

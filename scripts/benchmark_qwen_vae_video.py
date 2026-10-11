@@ -55,6 +55,25 @@ CRITERIA = {
     "largest_sequence_speedup_min": 1.25,
     "mlx_peak_memory_gib_max": 20.0,
 }
+MEMORY_TRACE: list[dict[str, Any]] | None = None
+
+
+def evaluated(label: str, *values: mx.array) -> None:
+    """Evaluate arrays and optionally record a bounded per-operation memory peak."""
+    if MEMORY_TRACE is not None:
+        mx.reset_peak_memory()
+    mx.eval(*values)
+    if MEMORY_TRACE is not None:
+        primary = values[0]
+        MEMORY_TRACE.append({
+            "label": label,
+            "shape": list(primary.shape),
+            "dtype": str(primary.dtype),
+            "evaluated_bytes": sum(int(value.nbytes) for value in values),
+            "active_memory_bytes": mx.get_active_memory(),
+            "peak_memory_bytes": mx.get_peak_memory(),
+            "cache_memory_bytes": mx.get_cache_memory(),
+        })
 
 
 def file_sha256(path: Path) -> str:
@@ -85,6 +104,28 @@ def summarize(values: list[float]) -> dict[str, float]:
         "max_seconds": max(values),
         "p95_seconds": ordered[p95_index],
     }
+
+
+def summarize_memory_trace(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for record in records:
+        current = grouped.setdefault(record["label"], {
+            "label": record["label"],
+            "shape": record["shape"],
+            "dtype": record["dtype"],
+            "observations": 0,
+            "max_evaluated_bytes": 0,
+            "max_active_memory_bytes": 0,
+            "max_peak_memory_bytes": 0,
+            "max_cache_memory_bytes": 0,
+        })
+        current["observations"] += 1
+        for key in (
+            "evaluated_bytes", "active_memory_bytes", "peak_memory_bytes", "cache_memory_bytes",
+        ):
+            target = f"max_{key}"
+            current[target] = max(current[target], record[key])
+    return sorted(grouped.values(), key=lambda item: item["max_peak_memory_bytes"], reverse=True)
 
 
 def build_temporal_latent(first: torch.Tensor, last: torch.Tensor, frames: int) -> torch.Tensor:
@@ -174,25 +215,47 @@ def operation_eager_residual(
     first_cache: Any,
     second_cache: Any,
     create_cache_entry: Callable[..., mx.array],
+    label: str = "residual",
 ):
     """Bound residual-block intermediates without changing its arithmetic."""
     shortcut = layer.shortcut(value) if layer.shortcut is not None else value
-    mx.eval(shortcut)
+    evaluated(f"{label}.shortcut", shortcut)
     residual = nn.silu(layer.norm1(value))
-    mx.eval(residual)
+    evaluated(f"{label}.norm1_silu", residual)
     cache_input = residual
     residual = layer.conv1(residual, first_cache)
     new_first = create_cache_entry(cache_input, first_cache)
-    mx.eval(shortcut, residual, new_first)
+    evaluated(f"{label}.conv1", shortcut, residual, new_first)
     residual = nn.silu(layer.norm2(residual))
-    mx.eval(residual)
+    evaluated(f"{label}.norm2_silu", residual)
     cache_input = residual
     residual = layer.conv2(residual, second_cache)
     new_second = create_cache_entry(cache_input, second_cache)
-    mx.eval(shortcut, residual, new_first, new_second)
+    evaluated(f"{label}.conv2", shortcut, residual, new_first, new_second)
     output = shortcut + residual
-    mx.eval(output, new_first, new_second)
+    evaluated(f"{label}.add", output, new_first, new_second)
     return output, new_first, new_second
+
+
+def temporal_chunked_spatial_upsample(layer: Any, value: mx.array, label: str):
+    """Run an upsample2d layer one temporal slice at a time."""
+    if layer.mode != "upsample2d":
+        raise ValueError("temporal chunking is only valid for upsample2d")
+    batch, frames, height, width, channels = value.shape
+    outputs = []
+    for frame_index in range(frames):
+        frame = value[:, frame_index:frame_index + 1].reshape(
+            batch, height, width, channels,
+        )
+        frame = layer.upsample(frame)
+        evaluated(f"{label}.chunk{frame_index}.upsample", frame)
+        frame = mx.pad(frame, [(0, 0), (1, 1), (1, 1), (0, 0)])
+        frame = layer.conv(frame)
+        evaluated(f"{label}.chunk{frame_index}.conv", frame)
+        outputs.append(frame.reshape(batch, 1, frame.shape[1], frame.shape[2], frame.shape[3]))
+    output = mx.concatenate(outputs, axis=1)
+    evaluated(f"{label}.concat", output)
+    return output, None
 
 
 def layer_eager_decoder_step(
@@ -200,6 +263,9 @@ def layer_eager_decoder_step(
     value: mx.array,
     feature_cache: list[Any],
     operation_eager: bool = False,
+    frame_index: int = 0,
+    consume_cache: bool = False,
+    chunk_spatial_resample: bool = False,
 ):
     """Run one latent frame while materializing after each decoder layer."""
     cache_index = 0
@@ -207,73 +273,101 @@ def layer_eager_decoder_step(
     layers_module = sys.modules[decoder.conv1.__class__.__module__]
     create_cache_entry = layers_module.create_cache_entry
 
-    def residual(layer: Any, value: mx.array, first_cache: Any, second_cache: Any):
+    def cache_at(index: int):
+        cached = feature_cache[index]
+        if consume_cache:
+            feature_cache[index] = None
+        return cached
+
+    frame = f"frame{frame_index}"
+
+    def residual(
+        layer: Any, value: mx.array, first_cache: Any, second_cache: Any, label: str,
+    ):
         if operation_eager:
             return operation_eager_residual(
-                layer, value, first_cache, second_cache, create_cache_entry,
+                layer, value, first_cache, second_cache, create_cache_entry, label,
             )
         return layer(value, first_cache, second_cache)
 
     cache_input = value
-    value = decoder.conv1(value, feature_cache[cache_index])
+    previous = cache_at(cache_index)
+    value = decoder.conv1(value, previous)
     # Use the reference helper through the bound module's package so cache
     # construction remains identical to the pinned Apple implementation.
-    new_cache.append(create_cache_entry(cache_input, feature_cache[cache_index]))
+    new_cache.append(create_cache_entry(cache_input, previous))
     cache_index += 1
-    mx.eval(value, *new_cache)
+    evaluated(f"{frame}.decoder_conv1", value, *new_cache)
 
     value, first, second = residual(
         decoder.middle_res1,
-        value, feature_cache[cache_index], feature_cache[cache_index + 1],
+        value, cache_at(cache_index), cache_at(cache_index + 1),
+        f"{frame}.middle_res1",
     )
     new_cache.extend((first, second))
     cache_index += 2
-    mx.eval(value, *new_cache)
+    evaluated(f"{frame}.middle_res1.complete", value, *new_cache)
 
     value = decoder.middle_attn(value)
-    mx.eval(value, *new_cache)
+    evaluated(f"{frame}.middle_attention", value, *new_cache)
 
     value, first, second = residual(
         decoder.middle_res2,
-        value, feature_cache[cache_index], feature_cache[cache_index + 1],
+        value, cache_at(cache_index), cache_at(cache_index + 1),
+        f"{frame}.middle_res2",
     )
     new_cache.extend((first, second))
     cache_index += 2
-    mx.eval(value, *new_cache)
+    evaluated(f"{frame}.middle_res2.complete", value, *new_cache)
 
-    for stage in decoder.upsamples:
+    for stage_index, stage in enumerate(decoder.upsamples):
+        residual_index = 0
         for layer in stage:
             layer_name = type(layer).__name__
             if layer_name == "ResidualBlock":
                 value, first, second = residual(
                     layer,
-                    value, feature_cache[cache_index], feature_cache[cache_index + 1],
+                    value, cache_at(cache_index), cache_at(cache_index + 1),
+                    f"{frame}.stage{stage_index}.residual{residual_index}",
                 )
                 new_cache.extend((first, second))
                 cache_index += 2
+                residual_index += 1
             elif layer_name == "AttentionBlock":
                 value = layer(value)
             elif layer_name == "Resample":
-                value, cache = layer(value, feature_cache[cache_index])
+                label = f"{frame}.stage{stage_index}.resample"
+                if chunk_spatial_resample and layer.mode == "upsample2d":
+                    value, cache = temporal_chunked_spatial_upsample(layer, value, label)
+                else:
+                    previous = cache_at(cache_index) if hasattr(layer, "time_conv") else None
+                    value, cache = layer(value, previous)
                 if cache is not None:
                     new_cache.append(cache)
                     cache_index += 1
             else:
                 raise RuntimeError(f"unexpected decoder layer: {layer_name}")
-            mx.eval(value, *new_cache)
+            evaluated(f"{frame}.stage{stage_index}.{layer_name}.complete", value, *new_cache)
 
     value = decoder.head_norm(value)
     value = nn.silu(value)
     if operation_eager:
-        mx.eval(value, *new_cache)
+        evaluated(f"{frame}.head_norm_silu", value, *new_cache)
     cache_input = value
-    value = decoder.head_conv(value, feature_cache[cache_index])
-    new_cache.append(create_cache_entry(cache_input, feature_cache[cache_index]))
-    mx.eval(value, *new_cache)
+    previous = cache_at(cache_index)
+    value = decoder.head_conv(value, previous)
+    new_cache.append(create_cache_entry(cache_input, previous))
+    evaluated(f"{frame}.head_conv", value, *new_cache)
     return value, new_cache
 
 
-def layer_eager_decode(model: Any, latent: mx.array, operation_eager: bool = False) -> mx.array:
+def layer_eager_decode(
+    model: Any,
+    latent: mx.array,
+    operation_eager: bool = False,
+    consume_cache: bool = False,
+    chunk_spatial_resample: bool = False,
+) -> mx.array:
     """Decode with layer-sized graphs to test activation lifetime as the peak source."""
     latent = latent[None]
     scale = 1.0 / model.std
@@ -281,7 +375,7 @@ def layer_eager_decode(model: Any, latent: mx.array, operation_eager: bool = Fal
         1, 1, 1, 1, model.z_dim,
     )
     decoded_input = model.conv2(latent)
-    mx.eval(decoded_input)
+    evaluated("predecoder_conv", decoded_input)
     feature_cache = [None] * model.decoder.num_cache_slots
     outputs = []
     for index in range(decoded_input.shape[1]):
@@ -290,9 +384,14 @@ def layer_eager_decode(model: Any, latent: mx.array, operation_eager: bool = Fal
             decoded_input[:, index:index + 1],
             feature_cache,
             operation_eager=operation_eager,
+            frame_index=index,
+            consume_cache=consume_cache,
+            chunk_spatial_resample=chunk_spatial_resample,
         )
         outputs.append(output)
-    return mx.clip(mx.concatenate(outputs, axis=1), -1.0, 1.0)[0]
+    output = mx.clip(mx.concatenate(outputs, axis=1), -1.0, 1.0)[0]
+    evaluated("decoder_output_concat", output)
+    return output
 
 
 def spatial_tiled_decoder_step(
@@ -448,12 +547,14 @@ def main() -> int:
         "--mlx-cache-policy",
         choices=(
             "official", "eager_bounded", "layer_eager_bounded", "op_eager_bounded",
-            "spatial_tiled_bounded",
+            "spatial_tiled_bounded", "cache_consuming_bounded",
+            "cache_consuming_chunked_resample",
         ),
         default="official",
         help="Official reference decode or eager temporal-cache materialization plus cache release.",
     )
     parser.add_argument("--spatial-tile-halo", type=int, default=32)
+    parser.add_argument("--trace-memory", action="store_true")
     parser.add_argument(
         "--output", type=Path,
         default=ROOT / "reports" / "benchmarks" / "qwen_vae_video.json",
@@ -472,6 +573,10 @@ def main() -> int:
         raise SystemExit("--latent-frames values must be positive")
     if args.spatial_tile_halo < 7:
         raise SystemExit("--spatial-tile-halo must be at least the seven-pixel tail radius")
+    if args.trace_memory and args.mlx_cache_policy not in {
+        "op_eager_bounded", "cache_consuming_bounded", "cache_consuming_chunked_resample",
+    }:
+        raise SystemExit("--trace-memory requires an operation-eager cache policy")
     if not torch.backends.mps.is_available():
         raise SystemExit("Torch MPS is required")
 
@@ -519,10 +624,22 @@ def main() -> int:
                 decoded = layer_eager_decode(mlx_vae, source_mlx)
             elif args.mlx_cache_policy == "op_eager_bounded":
                 decoded = layer_eager_decode(mlx_vae, source_mlx, operation_eager=True)
+            elif args.mlx_cache_policy == "cache_consuming_bounded":
+                decoded = layer_eager_decode(
+                    mlx_vae, source_mlx, operation_eager=True, consume_cache=True,
+                )
+            elif args.mlx_cache_policy == "cache_consuming_chunked_resample":
+                decoded = layer_eager_decode(
+                    mlx_vae,
+                    source_mlx,
+                    operation_eager=True,
+                    consume_cache=True,
+                    chunk_spatial_resample=True,
+                )
             else:
                 decoded = spatial_tiled_decode(mlx_vae, source_mlx, args.spatial_tile_halo)
             pixels = mx.clip((decoded.astype(mx.float32) + 1.0) / 2.0, 0.0, 1.0)
-            mx.eval(pixels)
+            evaluated("output_pixels", pixels)
             pixels_torch = torch.as_tensor(pixels)
             torch.mps.synchronize()
             outputs.append(pixels_torch.cpu())
@@ -570,6 +687,7 @@ def main() -> int:
             "mlx_to_torch": "torch.as_tensor(mlx_array)",
             "mlx_cache_policy": args.mlx_cache_policy,
             "spatial_tile_halo": args.spatial_tile_halo,
+            "per_operation_memory_trace": args.trace_memory,
             "cache_release_in_timed_boundary": args.mlx_cache_policy != "official",
             "criteria_predeclared": CRITERIA,
             "production_environment_modified": False,
@@ -579,11 +697,14 @@ def main() -> int:
     atomic_write_json(args.output, report)
 
     for latent_count in latent_frames:
+        global MEMORY_TRACE
+        MEMORY_TRACE = None
         latent = build_temporal_latent(first, last, latent_count)
         expected_output_frames = 1 + 4 * (latent_count - 1)
         for _ in range(args.warmups):
             stock_decode(latent)
             mlx_decode(latent)
+        MEMORY_TRACE = [] if args.trace_memory else None
 
         timings: dict[str, list[float]] = {"stock": [], "mlx": []}
         outputs: dict[str, torch.Tensor] = {}
@@ -618,6 +739,11 @@ def main() -> int:
             for item in quality["per_frame"]
         ]
         temporal_mae = [float(item["rgb_mae"]) for item in quality["temporal_delta"]]
+        trace_records = list(MEMORY_TRACE or [])
+        traced_peak = max(
+            (record["peak_memory_bytes"] for record in trace_records),
+            default=mx.get_peak_memory(),
+        )
         result = {
             "latent_frames": latent_count,
             "expected_output_frames": expected_output_frames,
@@ -636,7 +762,7 @@ def main() -> int:
             },
             "speedup": speedup,
             "quality": quality,
-            "mlx_peak_memory_bytes": mx.get_peak_memory(),
+            "mlx_peak_memory_bytes": traced_peak,
             "mlx_active_memory_bytes": mx.get_active_memory(),
             "mlx_cache_memory_bytes": mx.get_cache_memory(),
             "gates": {
@@ -654,6 +780,11 @@ def main() -> int:
                 ),
             },
         }
+        if args.trace_memory:
+            result["memory_trace"] = {
+                "records": trace_records,
+                "summary_by_peak": summarize_memory_trace(trace_records),
+            }
         result["gates"]["quality_and_structure"] = all(result["gates"].values())
         report["results"].append(result)
         atomic_write_json(args.output, report)

@@ -364,6 +364,30 @@ attention-free residual blocks. It preserved the official MLX output exactly
 and reduced thirteen-frame peak memory to 24.74 GiB, still above the unchanged
 20 GiB gate.
 
+To reproduce the per-operation attribution and the first candidate that passes
+the original memory gate:
+
+```bash
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 4 --warmups 1 --iterations 2 \
+  --mlx-cache-policy cache_consuming_chunked_resample --trace-memory \
+  --output reports/benchmarks/qwen_vae_video_chunked_resample_trace.json
+
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 1,2,4 --warmups 1 --iterations 4 \
+  --mlx-cache-policy cache_consuming_chunked_resample \
+  --output reports/benchmarks/qwen_vae_video_cache_chunked_full.json
+```
+
+Tracing resets peak counters around each explicit MLX evaluation and is for
+attribution, not authoritative timing. The untraced full sweep is the gate
+result: 19.908 GiB peak and 2.101x speedup at thirteen output frames, reproduced
+independently at the same peak and 2.105x. Keep the candidate isolated until a
+real video model supplies native temporal latents and the server path passes a
+repeated endurance run.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
