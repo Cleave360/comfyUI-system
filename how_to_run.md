@@ -521,6 +521,55 @@ gates but failed p95 timing stability after a large second-pair excursion. Use
 `--reanalyze-only` to recompute decoded-pixel hashes and gates from retained
 outputs without rerunning the workflows. Production remains unchanged.
 
+To reproduce the follow-up process-isolation experiment, run one persistent
+worker per workload. The Qwen worker clears reclaimable Torch MPS cache after
+each image decode; the Wan worker retains the passing MLX VAE plus post-decode
+cache boundary:
+
+```bash
+mkdir -p reports/runtime/isolated-soak-qwen/user \
+  reports/runtime/isolated-soak-wan/user
+
+MLX_ENABLE_TF32=0 \
+KINDRED_WAN_MLX_VAE_RUN_MODES=mlx \
+KINDRED_WAN_MPS_CLEANUP_POLICY=none \
+KINDRED_TORCH_EMPTY_CACHE_ALL_VAE=1 \
+KINDRED_WAN_MLX_VAE_REPORT="$PWD/reports/profiles/isolated_soak_qwen_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/wan_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/isolated-soak-qwen/user"
+
+MLX_ENABLE_TF32=0 \
+KINDRED_WAN_MLX_VAE_RUN_MODES=mlx,mlx,mlx,mlx,mlx,mlx,mlx \
+KINDRED_WAN_MPS_CLEANUP_POLICY=torch_empty_cache \
+KINDRED_TORCH_EMPTY_CACHE_ALL_VAE=0 \
+KINDRED_WAN_MLX_VAE_REPORT="$PWD/reports/profiles/isolated_soak_wan_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/wan_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8289 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/isolated-soak-wan/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_isolated_image_video_soak.py \
+  --image-url http://127.0.0.1:8288 --video-url http://127.0.0.1:8289 \
+  --pairs 6 --qwen-steps 20 --wan-steps 4 --cooldown-seconds 2 \
+  --timeout 1800 --sample-interval 2 \
+  --image-server-report reports/profiles/isolated_soak_qwen_server.json \
+  --video-server-report reports/profiles/isolated_soak_wan_server.json \
+  --baseline-report reports/benchmarks/mixed_image_video_soak.json \
+  --output reports/benchmarks/isolated_image_video_soak.json
+```
+
+The first complete run rejected process isolation as a promotion candidate.
+Outputs remained valid and deterministic, but Qwen total p95/median was 2.373,
+Wan total p95/median was 1.401, and Qwen Torch driver allocation grew by
+4.141 GiB. The second measured Qwen render took 318.972 seconds before later
+runs stabilized near 134 seconds. Stop both experimental ports after capture;
+production ports 8188, 8075, and 8070 are not part of this experiment.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

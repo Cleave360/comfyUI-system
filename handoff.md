@@ -348,3 +348,36 @@ Evidence:
   `9bf5981684289ace594664bba46cdbb915083491045ffd8e888b160700ffc277`,
   `af2100b26ca12f704cd56c1f00635cc49f7303893c8f8dca6245ec6e90124702`,
   and `fd9831937967576a6b8c90145f604efec73dbf475dfe99ff4c2c6f1bee4b138b`.
+
+## 2026-10-11 — Persistent Qwen/Wan Process-Isolation Experiment
+
+Current repo position:
+- A new governed harness runs the same mixed sequence against two persistent
+  isolated ComfyUI workers, with independent PIDs and per-worker ledgers.
+- The Qwen worker now optionally records non-Wan VAE decode timing/memory and
+  clears reclaimable MPS cache after every image decode. The Wan worker retains
+  native MLX VAE decode plus its existing post-decode cache boundary.
+- The complete two-warm-up/six-pair run preserved valid deterministic image and
+  video output, stable late-run medians, separate PIDs, audio availability,
+  bounded combined RSS, and zero retained MLX cache.
+- Process isolation failed the promotion gates. Qwen total/sampler p95 ratios
+  were 2.373/2.418, Wan total was 1.401, Qwen total median speedup was only
+  1.180x, and the Qwen worker accumulated 4.141 GiB Torch driver allocation.
+  The second Qwen measurement reached 318.972 seconds, after which totals
+  stabilized near 134 seconds.
+
+Decisions and boundaries:
+- Reject persistent process isolation as a sufficient performance fix. It
+  removes model-eviction ambiguity and improves Wan total latency, but does not
+  isolate the shared Metal device's sustained-load excursion.
+- Preserve this as negative evidence; do not promote either experimental
+  worker or the new cache setting into production.
+- The next credible discriminator is a recovery-aware queue/cooldown policy
+  keyed to the shared device, not another model-residency variant.
+- Production services remain unchanged on 8188, 8075, and 8070.
+
+Evidence:
+- Isolated soak / Qwen worker / Wan worker SHA-256:
+  `2218e083201ddcd5b8927b7a003c1619171e4a7fc0dc8a9c334f80375d6b7862`,
+  `0db362536f0e8139b0e4e491f3ad7699dd0afce899a2d9c896c97105b37905ad`,
+  and `4875de150561795a0927f77b7438c2183cef01de80f8daeeeb8a7042a72c4b3b`.

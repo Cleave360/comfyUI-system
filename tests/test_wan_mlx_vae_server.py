@@ -41,3 +41,7 @@ def test_wan_mlx_server_fails_closed_and_records_memory():
     assert 'torchaudio_package_version != "2.11.0"' in value
     assert "torch_major_minor < (2, 11)" in value
     assert '"torchaudio": torchaudio_package_version' in value
+    assert 'ALL_VAE_CLEANUP not in {"0", "1"}' in value
+    assert '"all_vae_cleanup": ALL_VAE_CLEANUP == "1"' in value
+    assert '"non_target_decode_records": state["non_target_decode_records"]' in value
+    assert '"process_id": os.getpid()' in value

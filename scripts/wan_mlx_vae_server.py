@@ -35,6 +35,7 @@ RUN_MODES = tuple(
     ).split(",") if value.strip()
 )
 CLEANUP_POLICY = os.environ.get("KINDRED_WAN_MPS_CLEANUP_POLICY", "none").strip()
+ALL_VAE_CLEANUP = os.environ.get("KINDRED_TORCH_EMPTY_CACHE_ALL_VAE", "0").strip()
 if not REPORT_PATH.is_absolute():
     REPORT_PATH = ROOT / REPORT_PATH
 if not WEIGHTS_PATH.is_absolute():
@@ -45,6 +46,8 @@ if CLEANUP_POLICY not in {"none", "torch_empty_cache"}:
     raise SystemExit(
         "KINDRED_WAN_MPS_CLEANUP_POLICY must be none or torch_empty_cache"
     )
+if ALL_VAE_CLEANUP not in {"0", "1"}:
+    raise SystemExit("KINDRED_TORCH_EMPTY_CACHE_ALL_VAE must be 0 or 1")
 if not WEIGHTS_PATH.is_file():
     raise SystemExit(f"Wan VAE weights not found: {WEIGHTS_PATH}")
 
@@ -138,6 +141,7 @@ state: dict[str, Any] = {
     "model_load_seconds": None,
     "decode_index": 0,
     "records": [],
+    "non_target_decode_records": [],
     "sampler_records": [],
 }
 
@@ -180,6 +184,7 @@ def write_report() -> None:
         "schema_version": "kindred.comfyui.wan_mlx_vae_server.v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "runtime": {
+            "process_id": os.getpid(),
             "python": sys.version.split()[0],
             "torch": torch.__version__,
             "torchaudio": torchaudio_package_version,
@@ -205,9 +210,11 @@ def write_report() -> None:
             "output_device": "cpu",
             "mlx_enable_tf32": os.environ.get("MLX_ENABLE_TF32", "") == "1",
             "cleanup_policy": CLEANUP_POLICY,
+            "all_vae_cleanup": ALL_VAE_CLEANUP == "1",
         },
         "model_load_seconds": state["model_load_seconds"],
         "sampler_records": state["sampler_records"],
+        "non_target_decode_records": state["non_target_decode_records"],
         "records": state["records"],
     }
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +284,22 @@ def routed_decode(self, samples_in, vae_options={}):
         and samples_in.shape[2] > 1
     )
     if not is_target:
-        return original_decode(self, samples_in, vae_options=vae_options)
+        torch.mps.synchronize()
+        started = time.perf_counter()
+        output = original_decode(self, samples_in, vae_options=vae_options)
+        torch.mps.synchronize()
+        record = {
+            "decode_index": len(state["non_target_decode_records"]),
+            "vae_class": type(getattr(self, "first_stage_model", None)).__name__,
+            "seconds": round(time.perf_counter() - started, 6),
+            "memory_before_cleanup": memory_snapshot(),
+        }
+        if ALL_VAE_CLEANUP == "1":
+            torch.mps.empty_cache()
+        record["memory_after_cleanup"] = memory_snapshot()
+        state["non_target_decode_records"].append(record)
+        write_report()
+        return output
     index = state["decode_index"]
     mode = mode_for_decode(index)
     state["decode_index"] += 1

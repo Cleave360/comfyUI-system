@@ -726,3 +726,34 @@ Local ignored evidence SHA-256:
 - Mixed soak report: `9bf5981684289ace594664bba46cdbb915083491045ffd8e888b160700ffc277`
 - Mixed soak server ledger: `af2100b26ca12f704cd56c1f00635cc49f7303893c8f8dca6245ec6e90124702`
 - Isolated dependency specification: `fd9831937967576a6b8c90145f604efec73dbf475dfe99ff4c2c6f1bee4b138b`
+
+### Persistent process isolation follow-up
+
+The next discriminator assigned Qwen Image and Wan VACE to separate persistent
+ComfyUI processes on ports 8288 and 8289. Both models remained resident, the
+same two warm-ups and six measured alternating pairs were used, and the Qwen
+worker cleared reclaimable Torch MPS cache after every image decode. This
+removed model-eviction ambiguity but did not stabilize the shared MPS device.
+
+| Workload | Total median | Total range | Total p95/median | Sampler median | Sampler range | Sampler p95/median | Baseline total speedup |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen image | 134.406 s | 112.350-318.972 s | **2.373 fail** | 130.514 s | 108.177-315.603 s | **2.418 fail** | **1.180 fail** |
+| Wan video | 40.134 s | 40.116-56.229 s | **1.401 fail** | 32.175 s | 30.978-43.291 s | 1.346 | 1.876 |
+
+All image and video runs were valid and pixel-deterministic. Last-half versus
+first-half medians passed at 1.015 for Qwen and 0.869 for Wan, confirming a
+large reversible second-pair excursion rather than monotonic degradation.
+Combined peak process RSS was 31.641 GiB, MLX retained cache remained zero, and
+RSS-growth gates passed. The Qwen worker nevertheless accumulated 4.141 GiB of
+Torch driver allocation, failing the 1 GiB gate.
+
+Process isolation therefore helps Wan total latency by avoiding model reloads,
+but it is not a sufficient MPS stability fix and is rejected for production.
+The result narrows the next experiment toward a recovery-aware dispatch policy
+or explicit shared-device cooldown rather than additional model residency.
+
+Local ignored evidence SHA-256:
+
+- Isolated soak report: `2218e083201ddcd5b8927b7a003c1619171e4a7fc0dc8a9c334f80375d6b7862`
+- Qwen worker ledger: `0db362536f0e8139b0e4e491f3ad7699dd0afce899a2d9c896c97105b37905ad`
+- Wan worker ledger: `4875de150561795a0927f77b7438c2183cef01de80f8daeeeb8a7042a72c4b3b`
