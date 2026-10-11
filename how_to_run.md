@@ -428,6 +428,37 @@ the same 13.596 GiB MLX peak, identical output hashes, and zero retained MLX
 cache. Production remains pinned to PyTorch 2.5.1 pending full dependency,
 audio, image-workflow, and repeated-server validation of a newer runtime.
 
+For the governed alternating full-stack trial, start the isolated server with
+the exact ten-run sequence. This includes two warm-ups, two stock controls, and
+three alternating stock/MLX pairs:
+
+```bash
+mkdir -p reports/runtime/wan-mlx-vae-e2e/user
+MLX_ENABLE_TF32=0 \
+KINDRED_WAN_MLX_VAE_RUN_MODES=stock,mlx,stock,stock,stock,mlx,mlx,stock,stock,mlx \
+KINDRED_WAN_MLX_VAE_REPORT="$PWD/reports/profiles/wan_mlx_vae_e2e_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/wan_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/wan-mlx-vae-e2e/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_wan_mlx_vae_e2e.py \
+  --base-url http://127.0.0.1:8288 --seeds 770,771,772 \
+  --steps 4 --cooldown-seconds 2 --timeout 1800 --sample-interval 2 \
+  --server-report reports/profiles/wan_mlx_vae_e2e_server.json \
+  --output reports/benchmarks/wan_mlx_vae_e2e_full.json
+```
+
+The first acceptance passed every fixed gate, including exact control,
+same-seed latent hashes, all-frame and temporal quality, three-of-three
+end-to-end wins, 13.596 GiB peak, and zero retained MLX cache. Timing became
+strongly non-stationary under the shared machine load, so use the 4.011-second
+least-contended pair saving rather than the inflated 72.273-second median as
+the practical reference. Stop port 8288 after the run; this remains an isolated
+experimental server with audio nodes unavailable.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

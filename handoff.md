@@ -253,3 +253,33 @@ Evidence:
   `23739633c8107cc16fb89492c3e913bd3ae966e3c736ea8397cb86d147a1021b`,
   `2701d0d54bab3d35f58f893af17196ef9fc0bb5af30c0a30e724efc737f69c3a`,
   and `abfd9133e030feb0e37711decc92e4d98d31c102d8288d669dcdd0d5f121a312`.
+
+## 2026-10-11 — Alternating Full-Stack Wan MLX Acceptance
+
+Current repo position:
+- An isolated Torch 2.12 ComfyUI server now alternates the stock Wan decoder
+  and the cache-consuming/chunked-resample MLX candidate in a fixed ten-run
+  sequence. The sampler, conditioning, model, prompt, and save path are shared.
+- Warm-ups and a stock/stock control precede three same-seed pairs with order
+  alternating. A cache-bust node forces one complete temporal decode per run.
+- All fixed gates passed: exact control; matching paired latent hashes; 17 valid
+  frames per run; global/per-frame/temporal quality; mode accounting; 3/3
+  end-to-end wins; 4.588x paired median VAE speedup; 13.596 GiB peak; zero MLX
+  cache retention.
+
+Decisions and boundaries:
+- This is full-stack directional evidence because MLX reduced all three paired
+  workflow times. It is not a stable production throughput number.
+- Shared-system timing drift was severe. The least-contended pair saved 4.011
+  seconds (42.134 to 38.123); later stock runs slowed far beyond baseline while
+  free unified memory remained above 353 GiB. Do not quote the 72.273-second
+  median saving as normal performance.
+- Production remains on Torch 2.5.1. The candidate still lacks compatible audio
+  dependencies and needs runtime-drift diagnosis before promotion.
+
+Evidence:
+- Full-stack benchmark / server ledger SHA-256:
+  `efb896141c0d73f6d6bc62bce2b9fe597021b2e6be07a23fd4d1069209ca4a8d` /
+  `8ac767e6dd11ece6cccb636672277db3a9f641d1073dcdc0a9e73f76c16d4bdb`.
+- Manual comparison of all three midpoint pairs found no visible stock/MLX
+  divergence; first/middle/last inspection confirmed temporal motion.

@@ -600,3 +600,47 @@ Local ignored evidence:
   `2701d0d54bab3d35f58f893af17196ef9fc0bb5af30c0a30e724efc737f69c3a`
 - Independent repeat SHA-256:
   `abfd9133e030feb0e37711decc92e4d98d31c102d8288d669dcdd0d5f121a312`
+
+### Alternating full-stack Wan server acceptance
+
+The native component candidate was then installed only in an isolated ComfyUI
+server and evaluated in one ten-run process. The sequence was fixed before the
+run: stock/MLX warm-ups, an exact stock/stock control, and three same-seed
+stock/MLX pairs with pair order alternating. A latent pass-through nonce forced
+the sampler and decoder to execute on every run. Adaptive admitted all ten
+workflows; every run produced 17 finite, non-flat 832x480 frames.
+
+All predeclared gates passed:
+
+- The stock/stock control was pixel-exact across all 17 frames.
+- Server modes exactly matched the requested ten-mode sequence and there was
+  exactly one genuine `[1,16,5,60,104]` temporal decode per workflow.
+- Stock and MLX received byte-identical latent input for each of the three
+  paired seeds.
+- Global RGB MAE was 0.135-0.151 levels, minimum per-frame PSNR was 55.62 dB,
+  and worst temporal-difference MAE was 0.260 levels.
+- All three MLX workflows finished faster. End-to-end savings were 4.011,
+  100.512, and 72.273 seconds, passing the two-second median and two-of-three
+  win gates.
+- Paired direct VAE medians were 34.483 seconds for Torch and 7.515 seconds for
+  MLX (4.588x). MLX peak memory was 13.596 GiB with zero retained cache.
+- Manual midpoint comparison found no visible stock/MLX divergence; inspection
+  of first/middle/last frames confirmed coherent forward motion.
+
+The large median timing improvement must not be treated as expected production
+throughput. The shared machine became strongly non-stationary during the run:
+diffusion steps rose from roughly 4-7 seconds to 10-25 seconds, and stock VAE
+decode reached 64.660 seconds before partially recovering. Reported free unified
+memory remained above 353 GiB, so simple memory exhaustion does not explain the
+slowdown. Alternating order and three pair wins make the direction credible;
+the least-contended measured pair is the useful magnitude anchor at 4.011
+seconds saved end-to-end (42.134 to 38.123 seconds). Production remains
+unchanged until the newer Torch/audio dependency set and long-running runtime
+stability are resolved.
+
+Local ignored evidence:
+
+- Full-stack benchmark SHA-256:
+  `efb896141c0d73f6d6bc62bce2b9fe597021b2e6be07a23fd4d1069209ca4a8d`
+- Full-stack server ledger SHA-256:
+  `8ac767e6dd11ece6cccb636672277db3a9f641d1073dcdc0a9e73f76c16d4bdb`
