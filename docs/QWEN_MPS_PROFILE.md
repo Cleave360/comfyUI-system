@@ -423,3 +423,59 @@ Local ignored evidence:
   `3ad3b16536a08db3d11cfc9de287442b25336fa3af45d365d678db99834f1145`
 - End-to-end server ledger SHA-256:
   `f9bbfc129b52d9541fefcd0ab999a03c7c4d779db7b23a62d1c0a85dc09e9bc3`
+
+## Temporal Qwen/Wan VAE scaling experiment
+
+The next trial tested whether the native MLX decoder advantage becomes more
+material for video-shaped data. Two distinct 1024x576 latent endpoints came
+from governed 20-step Qwen renders. Intermediate latent frames were linear
+interpolations between those real endpoints. This construction tests decoder
+scaling and temporal arithmetic; it is not evidence that a video diffusion
+model generated coherent motion.
+
+The causal Wan decoder maps 1, 2, and 4 latent frames to 1, 5, and 13 RGB
+frames. Each decoder was warmed once and measured four times with alternating
+order. Weight loading was excluded; the normal CPU input/output boundary and
+the Torch MPS/MLX zero-copy bridge were included. Before the run, the trial
+required every sequence to remain below 1.0 global RGB MAE, every frame below
+1.25 RGB MAE and above 40 dB PSNR, temporal-difference MAE below 1.5 RGB
+levels, at least 1.25x speedup at the longest sequence, and no more than 20 GiB
+MLX peak memory.
+
+| Latent / output frames | Torch MPS median | MLX median | Speedup | Global RGB MAE | MLX peak |
+|---:|---:|---:|---:|---:|---:|
+| 1 / 1 | 1.788 s | 0.449 s | 3.986x | 0.574 | 9.01 GiB |
+| 2 / 5 | 7.390 s | 2.147 s | 3.442x | 0.316 | 26.75 GiB |
+| 4 / 13 | 18.260 s | 6.124 s | 2.982x | 0.262 | 36.89 GiB |
+
+All structure, finite-value, per-frame, aggregate-quality, temporal-difference,
+and speed gates passed. The worst frame was 0.574 RGB MAE at 44.62 dB, and the
+worst temporal-difference MAE was 0.661 RGB levels. The memory gate failed at
+five and thirteen output frames. The official MLX path also retained 82.53 GiB
+in its allocator cache after the complete sweep, despite only 0.237 GiB active
+at the end.
+
+A bounded-cache follow-up eagerly materialized every causal feature cache and
+called `mx.clear_cache()` inside the measured decode boundary. Its outputs were
+byte-identical to the official MLX mode at all three sequence lengths. It
+reduced retained allocator cache from 82.53 GiB to zero and still delivered a
+2.086x paired speedup for thirteen frames, but transient peak memory remained
+36.89 GiB. Therefore the cache-residency issue is mitigated while the transient
+working set is not. The original 20 GiB gate remains failed, and neither mode
+is promoted into production.
+
+The useful next branch is spatial tiling or decoder activation checkpointing
+inside MLX, evaluated against this same report. A lower-resolution video tier
+could also be tested as a separate product profile, but must not revise this
+experiment's gate after observation.
+
+Local ignored evidence:
+
+- Second governed endpoint capture SHA-256:
+  `a97178183a125c5456a8a0223bb98097b4bd06d0ed8c83950762bf96e351fe2c`
+- Governed capture render report SHA-256:
+  `89f1ec3b7a371e9e6082e89826387c1180d159ed23c1246a1761be477c1981ef`
+- Official temporal sweep SHA-256:
+  `0cf0074abc0d93f8e240635b0a024ce145b73fa37b52d6693d74cdf9d34f5531`
+- Bounded-cache temporal sweep SHA-256:
+  `833980aa5f4afaee8ae4b81fa701bd193af46f00bf853eb504bcc94203b7c9f5`

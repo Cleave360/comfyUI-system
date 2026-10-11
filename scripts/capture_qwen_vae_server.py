@@ -19,6 +19,8 @@ CAPTURE_PATH = Path(
         ROOT / "reports" / "captures" / "qwen_vae_1024x576.pt",
     )
 )
+if not CAPTURE_PATH.is_absolute():
+    CAPTURE_PATH = ROOT / CAPTURE_PATH
 
 sys.path.insert(0, str(SOURCE))
 os.chdir(SOURCE)

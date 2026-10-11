@@ -142,3 +142,34 @@ Qwen production-baseline addendum:
   as the production benchmark.
 - Qwen BF16 model, root text encoder, and VAE are now marked workflow-verified
   for MPS in the model lock. FP8 remains unsupported/operator-dependent.
+
+## 2026-10-11 — Temporal MLX VAE Scaling
+
+Current repo position:
+- A reproducible temporal Wan/Qwen VAE harness now compares native Torch MPS
+  and MLX using two governed 20-step, 1024x576 Qwen latent endpoints.
+- The causal trials decoded 1, 5, and 13 RGB frames. MLX achieved 3.986x,
+  3.442x, and 2.982x paired speedups with all fixed structure, per-frame,
+  aggregate-quality, and temporal-difference gates passing.
+- The predeclared 20 GiB memory gate failed: the thirteen-frame MLX path peaked
+  at 36.89 GiB and the official allocator retained 82.53 GiB cached.
+- An eager bounded-cache variant produced byte-identical MLX outputs, cleared
+  retained allocator cache to zero, and remained 2.086x faster at thirteen
+  frames. It did not reduce the transient 36.89 GiB peak.
+
+Decisions and boundaries:
+- This is decoder scaling evidence based on interpolated real latent endpoints,
+  not evidence of video-generator motion quality or realtime production.
+- Neither temporal mode is promoted because the original memory gate failed.
+  Production remains on PyTorch 2.5.1 and the experiment stays in the isolated
+  Torch 2.12/MLX environment.
+- The next credible optimization is spatial tiling or activation-lifetime work
+  inside the MLX decoder, retaining the same quality and memory comparator.
+
+Evidence:
+- `46 passed`; bootstrap and the 53-artifact model manifest pass.
+- Official / bounded local report hashes:
+  `0cf0074abc0d93f8e240635b0a024ce145b73fa37b52d6693d74cdf9d34f5531` /
+  `833980aa5f4afaee8ae4b81fa701bd193af46f00bf853eb504bcc94203b7c9f5`.
+- Changed files are the temporal benchmark and tests, capture-path correction,
+  Qwen profile, runbook, and this append-only handoff entry.

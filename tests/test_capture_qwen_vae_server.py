@@ -17,3 +17,4 @@ def test_qwen_vae_capture_server_is_bounded_and_atomic():
     assert 'latent_channels", None) == 16' in source
     assert "temporary.replace(CAPTURE_PATH)" in source
     assert "torch.mps.synchronize()" in source
+    assert "CAPTURE_PATH = ROOT / CAPTURE_PATH" in source

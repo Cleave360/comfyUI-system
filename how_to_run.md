@@ -301,6 +301,47 @@ production torchaudio package, borrows other production dependencies read-only,
 and does not establish a full-workflow speedup. See `docs/QWEN_MPS_PROFILE.md`
 for the exact results and boundary.
 
+To reproduce the temporal decoder trial, first collect a second real 20-step
+endpoint with the capture server. Use an absolute capture path; the launcher
+also resolves a relative path against the repository root:
+
+```bash
+mkdir -p reports/runtime/qwen-vae-video-capture/user
+KINDRED_QWEN_VAE_CAPTURE="$PWD/reports/captures/qwen_vae_video_endpoint_b.pt" \
+  .venv/bin/python scripts/capture_qwen_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/qwen-vae-video-capture/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_apple_silicon.py run \
+  --profile qwen-quality --base-url http://127.0.0.1:8288 \
+  --runs 1 --seed 7463 --width 1024 --height 576 --steps 20 \
+  --timeout 1800 --no-cold-first \
+  --output reports/benchmarks/qwen_vae_video_capture_run.json
+```
+
+After stopping the capture server, run the official and bounded-cache MLX
+comparisons in the isolated Torch 2.12 environment:
+
+```bash
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 1,2,4 --warmups 1 --iterations 4 \
+  --output reports/benchmarks/qwen_vae_video_full.json
+
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 1,2,4 --warmups 1 --iterations 4 \
+  --mlx-cache-policy eager_bounded \
+  --output reports/benchmarks/qwen_vae_video_bounded.json
+```
+
+The bounded policy eliminates retained MLX allocator cache and preserves the
+official MLX output exactly, but it does not reduce the measured 36.89 GiB
+transient peak for thirteen frames. The experiment therefore remains rejected
+under its predeclared 20 GiB memory gate.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
