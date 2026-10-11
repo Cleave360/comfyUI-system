@@ -46,7 +46,15 @@ def test_video_benchmark_checks_output_count_and_temporal_delta():
 
 def test_video_benchmark_has_bounded_temporal_cache_candidate():
     value = source()
-    assert 'choices=("official", "eager_bounded")' in value
+    assert '"op_eager_bounded"' in value
     assert "mx.eval(output, *feature_cache)" in value
     assert "mx.clear_cache()" in value
     assert '"cache_release_in_timed_boundary"' in value
+    assert "def layer_eager_decoder_step" in value
+    assert "mx.eval(value, *new_cache)" in value
+    assert "def operation_eager_residual" in value
+    assert "mx.eval(shortcut, residual, new_first, new_second)" in value
+    assert '"spatial_tiled_bounded"' in value
+    assert "def spatial_tiled_decoder_step" in value
+    assert 'parser.add_argument("--spatial-tile-halo", type=int, default=32)' in value
+    assert "seven-pixel tail radius" in value

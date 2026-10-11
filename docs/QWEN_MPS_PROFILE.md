@@ -464,10 +464,28 @@ reduced retained allocator cache from 82.53 GiB to zero and still delivered a
 working set is not. The original 20 GiB gate remains failed, and neither mode
 is promoted into production.
 
-The useful next branch is spatial tiling or decoder activation checkpointing
-inside MLX, evaluated against this same report. A lower-resolution video tier
-could also be tested as a separate product profile, but must not revise this
-experiment's gate after observation.
+Three activation-lifetime interventions then used the same inputs, quality
+gates, and CPU boundaries. Every candidate produced byte-identical MLX output
+at 1, 5, and 13 frames and cleared retained allocator cache to zero:
+
+| Thirteen-frame MLX policy | Median | Speedup | Peak memory | Change vs official |
+|---|---:|---:|---:|---:|
+| Official whole-frame compiled graph | 6.124 s | 2.982x | 36.89 GiB | baseline |
+| Layer-boundary materialization | 6.346 s | 1.946x | 30.45 GiB | -17.5% |
+| Residual operation boundaries | 6.188 s | 1.993x | 25.05 GiB | -32.1% |
+| Two-way spatial tile on final high-resolution tail | 6.686 s | 2.005x | 24.74 GiB | -32.9% |
+
+The operation-level candidate removed most of the avoidable peak while keeping
+roughly 2x throughput. Tiling the attention-free final stage with a 32-pixel
+halo saved only another 0.30 GiB, so that tail is not the dominant remaining
+allocation. The five-frame tiled case narrowly missed the gate at 20.14 GiB;
+the thirteen-frame case missed it at 24.74 GiB. This falsifies final-stage-only
+tiling as a sufficient solution.
+
+The next useful diagnostic is per-stage peak attribution across the earlier
+upsampling stages and causal feature caches. A lower-resolution video tier can
+also be tested as a separately declared product profile, but must not revise
+this experiment's gate after observation.
 
 Local ignored evidence:
 
@@ -479,3 +497,9 @@ Local ignored evidence:
   `0cf0074abc0d93f8e240635b0a024ce145b73fa37b52d6693d74cdf9d34f5531`
 - Bounded-cache temporal sweep SHA-256:
   `833980aa5f4afaee8ae4b81fa701bd193af46f00bf853eb504bcc94203b7c9f5`
+- Layer-boundary sweep SHA-256:
+  `875ec451cfa1a35bba15932ec1f30f1df5ca02fb3d4132ccc856c1a1831e2062`
+- Residual operation-boundary sweep SHA-256:
+  `3f7c2db5b0d1e7ae79dbcab572f4c7fa491aa313d687763b23d51d241880106b`
+- Spatial-tail tiled sweep SHA-256:
+  `effffbd08d457bccda2aadbaebbd8f9f7df47e6b065bdc5a03fa8d68520aefd1`

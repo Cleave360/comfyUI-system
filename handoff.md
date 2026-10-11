@@ -173,3 +173,28 @@ Evidence:
   `833980aa5f4afaee8ae4b81fa701bd193af46f00bf853eb504bcc94203b7c9f5`.
 - Changed files are the temporal benchmark and tests, capture-path correction,
   Qwen profile, runbook, and this append-only handoff entry.
+
+## 2026-10-11 — MLX Decoder Activation-Lifetime Follow-up
+
+Current repo position:
+- Layer-boundary, residual-operation, and final-stage spatial-tail candidates
+  were evaluated against the same governed temporal endpoints and fixed gates.
+- All three preserved byte-identical MLX output and zero retained allocator
+  cache. Thirteen-frame peak memory fell from 36.89 GiB to 30.45, 25.05, and
+  24.74 GiB respectively; the last remained 2.005x faster than Torch MPS.
+- The fixed 20 GiB gate still failed. Five-frame spatial tiling reached
+  20.14 GiB and thirteen frames reached 24.74 GiB.
+
+Decisions and boundaries:
+- Final-stage-only spatial tiling is rejected as a sufficient memory solution.
+- No production promotion is authorized. The strongest retained diagnostic
+  candidate is operation-boundary materialization, with spatial tiling kept for
+  exact comparative evidence.
+- Next work should attribute peak memory across earlier upsampling stages and
+  causal feature caches before attempting a broader tile or cache redesign.
+
+Evidence:
+- Layer / operation / spatial report hashes:
+  `875ec451cfa1a35bba15932ec1f30f1df5ca02fb3d4132ccc856c1a1831e2062`,
+  `3f7c2db5b0d1e7ae79dbcab572f4c7fa491aa313d687763b23d51d241880106b`,
+  and `effffbd08d457bccda2aadbaebbd8f9f7df47e6b065bdc5a03fa8d68520aefd1`.

@@ -26,6 +26,7 @@ import types
 from typing import Any, Callable
 
 import mlx.core as mx
+import mlx.nn as nn
 import numpy as np
 import torch
 
@@ -167,6 +168,252 @@ def eager_cache_decode(model: Any, latent: mx.array) -> mx.array:
     return mx.clip(mx.concatenate(outputs, axis=1), -1.0, 1.0)[0]
 
 
+def operation_eager_residual(
+    layer: Any,
+    value: mx.array,
+    first_cache: Any,
+    second_cache: Any,
+    create_cache_entry: Callable[..., mx.array],
+):
+    """Bound residual-block intermediates without changing its arithmetic."""
+    shortcut = layer.shortcut(value) if layer.shortcut is not None else value
+    mx.eval(shortcut)
+    residual = nn.silu(layer.norm1(value))
+    mx.eval(residual)
+    cache_input = residual
+    residual = layer.conv1(residual, first_cache)
+    new_first = create_cache_entry(cache_input, first_cache)
+    mx.eval(shortcut, residual, new_first)
+    residual = nn.silu(layer.norm2(residual))
+    mx.eval(residual)
+    cache_input = residual
+    residual = layer.conv2(residual, second_cache)
+    new_second = create_cache_entry(cache_input, second_cache)
+    mx.eval(shortcut, residual, new_first, new_second)
+    output = shortcut + residual
+    mx.eval(output, new_first, new_second)
+    return output, new_first, new_second
+
+
+def layer_eager_decoder_step(
+    decoder: Any,
+    value: mx.array,
+    feature_cache: list[Any],
+    operation_eager: bool = False,
+):
+    """Run one latent frame while materializing after each decoder layer."""
+    cache_index = 0
+    new_cache = []
+    layers_module = sys.modules[decoder.conv1.__class__.__module__]
+    create_cache_entry = layers_module.create_cache_entry
+
+    def residual(layer: Any, value: mx.array, first_cache: Any, second_cache: Any):
+        if operation_eager:
+            return operation_eager_residual(
+                layer, value, first_cache, second_cache, create_cache_entry,
+            )
+        return layer(value, first_cache, second_cache)
+
+    cache_input = value
+    value = decoder.conv1(value, feature_cache[cache_index])
+    # Use the reference helper through the bound module's package so cache
+    # construction remains identical to the pinned Apple implementation.
+    new_cache.append(create_cache_entry(cache_input, feature_cache[cache_index]))
+    cache_index += 1
+    mx.eval(value, *new_cache)
+
+    value, first, second = residual(
+        decoder.middle_res1,
+        value, feature_cache[cache_index], feature_cache[cache_index + 1],
+    )
+    new_cache.extend((first, second))
+    cache_index += 2
+    mx.eval(value, *new_cache)
+
+    value = decoder.middle_attn(value)
+    mx.eval(value, *new_cache)
+
+    value, first, second = residual(
+        decoder.middle_res2,
+        value, feature_cache[cache_index], feature_cache[cache_index + 1],
+    )
+    new_cache.extend((first, second))
+    cache_index += 2
+    mx.eval(value, *new_cache)
+
+    for stage in decoder.upsamples:
+        for layer in stage:
+            layer_name = type(layer).__name__
+            if layer_name == "ResidualBlock":
+                value, first, second = residual(
+                    layer,
+                    value, feature_cache[cache_index], feature_cache[cache_index + 1],
+                )
+                new_cache.extend((first, second))
+                cache_index += 2
+            elif layer_name == "AttentionBlock":
+                value = layer(value)
+            elif layer_name == "Resample":
+                value, cache = layer(value, feature_cache[cache_index])
+                if cache is not None:
+                    new_cache.append(cache)
+                    cache_index += 1
+            else:
+                raise RuntimeError(f"unexpected decoder layer: {layer_name}")
+            mx.eval(value, *new_cache)
+
+    value = decoder.head_norm(value)
+    value = nn.silu(value)
+    if operation_eager:
+        mx.eval(value, *new_cache)
+    cache_input = value
+    value = decoder.head_conv(value, feature_cache[cache_index])
+    new_cache.append(create_cache_entry(cache_input, feature_cache[cache_index]))
+    mx.eval(value, *new_cache)
+    return value, new_cache
+
+
+def layer_eager_decode(model: Any, latent: mx.array, operation_eager: bool = False) -> mx.array:
+    """Decode with layer-sized graphs to test activation lifetime as the peak source."""
+    latent = latent[None]
+    scale = 1.0 / model.std
+    latent = latent / scale.reshape(1, 1, 1, 1, model.z_dim) + model.mean.reshape(
+        1, 1, 1, 1, model.z_dim,
+    )
+    decoded_input = model.conv2(latent)
+    mx.eval(decoded_input)
+    feature_cache = [None] * model.decoder.num_cache_slots
+    outputs = []
+    for index in range(decoded_input.shape[1]):
+        output, feature_cache = layer_eager_decoder_step(
+            model.decoder,
+            decoded_input[:, index:index + 1],
+            feature_cache,
+            operation_eager=operation_eager,
+        )
+        outputs.append(output)
+    return mx.clip(mx.concatenate(outputs, axis=1), -1.0, 1.0)[0]
+
+
+def spatial_tiled_decoder_step(
+    decoder: Any,
+    value: mx.array,
+    state: dict[str, Any] | None,
+    halo: int,
+):
+    """Tile only the attention-free high-resolution decoder tail."""
+    final_stage = decoder.upsamples[-1]
+    if len(final_stage) != 3 or any(type(layer).__name__ != "ResidualBlock" for layer in final_stage):
+        raise RuntimeError("spatial tiling requires the pinned three-residual final Wan stage")
+    prefix_slot_count = decoder.num_cache_slots - 7
+    previous_prefix = state["prefix"] if state is not None else [None] * prefix_slot_count
+    cache_index = 0
+    new_prefix = []
+    layers_module = sys.modules[decoder.conv1.__class__.__module__]
+    create_cache_entry = layers_module.create_cache_entry
+
+    cache_input = value
+    value = decoder.conv1(value, previous_prefix[cache_index])
+    new_prefix.append(create_cache_entry(cache_input, previous_prefix[cache_index]))
+    cache_index += 1
+    mx.eval(value, *new_prefix)
+
+    for layer in (decoder.middle_res1,):
+        value, first, second = operation_eager_residual(
+            layer, value, previous_prefix[cache_index], previous_prefix[cache_index + 1],
+            create_cache_entry,
+        )
+        new_prefix.extend((first, second))
+        cache_index += 2
+    value = decoder.middle_attn(value)
+    mx.eval(value, *new_prefix)
+    value, first, second = operation_eager_residual(
+        decoder.middle_res2, value,
+        previous_prefix[cache_index], previous_prefix[cache_index + 1],
+        create_cache_entry,
+    )
+    new_prefix.extend((first, second))
+    cache_index += 2
+
+    for stage in decoder.upsamples[:-1]:
+        for layer in stage:
+            layer_name = type(layer).__name__
+            if layer_name == "ResidualBlock":
+                value, first, second = operation_eager_residual(
+                    layer, value,
+                    previous_prefix[cache_index], previous_prefix[cache_index + 1],
+                    create_cache_entry,
+                )
+                new_prefix.extend((first, second))
+                cache_index += 2
+            elif layer_name == "AttentionBlock":
+                value = layer(value)
+            elif layer_name == "Resample":
+                prior = previous_prefix[cache_index] if hasattr(layer, "time_conv") else None
+                value, cache = layer(value, prior)
+                if cache is not None:
+                    new_prefix.append(cache)
+                    cache_index += 1
+            else:
+                raise RuntimeError(f"unexpected decoder layer: {layer_name}")
+            mx.eval(value, *new_prefix)
+    if cache_index != prefix_slot_count:
+        raise RuntimeError(f"expected {prefix_slot_count} prefix caches, used {cache_index}")
+
+    height = value.shape[2]
+    split = height // 2
+    cores = ((0, split), (split, height))
+    previous_tiles = state["tiles"] if state is not None else [[None] * 7 for _ in cores]
+    output_tiles = []
+    new_tiles = []
+    for tile_index, (core_start, core_end) in enumerate(cores):
+        tile_start = max(0, core_start - halo)
+        tile_end = min(height, core_end + halo)
+        tile = value[:, :, tile_start:tile_end]
+        tile_cache = previous_tiles[tile_index]
+        tile_new_cache = []
+        tile_cache_index = 0
+        for layer in final_stage:
+            tile, first, second = operation_eager_residual(
+                layer, tile,
+                tile_cache[tile_cache_index], tile_cache[tile_cache_index + 1],
+                create_cache_entry,
+            )
+            tile_new_cache.extend((first, second))
+            tile_cache_index += 2
+        tile = nn.silu(decoder.head_norm(tile))
+        mx.eval(tile, *tile_new_cache)
+        cache_input = tile
+        tile = decoder.head_conv(tile, tile_cache[tile_cache_index])
+        tile_new_cache.append(create_cache_entry(cache_input, tile_cache[tile_cache_index]))
+        mx.eval(tile, *tile_new_cache)
+        local_start = core_start - tile_start
+        local_end = local_start + core_end - core_start
+        output_tiles.append(tile[:, :, local_start:local_end])
+        new_tiles.append(tile_new_cache)
+    output = mx.concatenate(output_tiles, axis=2)
+    mx.eval(output)
+    return output, {"prefix": new_prefix, "tiles": new_tiles}
+
+
+def spatial_tiled_decode(model: Any, latent: mx.array, halo: int) -> mx.array:
+    latent = latent[None]
+    scale = 1.0 / model.std
+    latent = latent / scale.reshape(1, 1, 1, 1, model.z_dim) + model.mean.reshape(
+        1, 1, 1, 1, model.z_dim,
+    )
+    decoded_input = model.conv2(latent)
+    mx.eval(decoded_input)
+    state = None
+    outputs = []
+    for index in range(decoded_input.shape[1]):
+        output, state = spatial_tiled_decoder_step(
+            model.decoder, decoded_input[:, index:index + 1], state, halo,
+        )
+        outputs.append(output)
+    return mx.clip(mx.concatenate(outputs, axis=1), -1.0, 1.0)[0]
+
+
 def configure_comfy_imports() -> None:
     production_sites = sorted((ROOT / ".venv" / "lib").glob("python*/site-packages"))
     if len(production_sites) != 1:
@@ -198,9 +445,15 @@ def main() -> int:
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=4)
     parser.add_argument(
-        "--mlx-cache-policy", choices=("official", "eager_bounded"), default="official",
+        "--mlx-cache-policy",
+        choices=(
+            "official", "eager_bounded", "layer_eager_bounded", "op_eager_bounded",
+            "spatial_tiled_bounded",
+        ),
+        default="official",
         help="Official reference decode or eager temporal-cache materialization plus cache release.",
     )
+    parser.add_argument("--spatial-tile-halo", type=int, default=32)
     parser.add_argument(
         "--output", type=Path,
         default=ROOT / "reports" / "benchmarks" / "qwen_vae_video.json",
@@ -217,6 +470,8 @@ def main() -> int:
         raise SystemExit("--latent-frames must be unique, positive, ascending integers")
     if latent_frames[0] < 1:
         raise SystemExit("--latent-frames values must be positive")
+    if args.spatial_tile_halo < 7:
+        raise SystemExit("--spatial-tile-halo must be at least the seven-pixel tail radius")
     if not torch.backends.mps.is_available():
         raise SystemExit("Torch MPS is required")
 
@@ -256,18 +511,23 @@ def main() -> int:
             source_mps = sample.to("mps")
             torch.mps.synchronize()
             source_mlx = mx.asarray(source_mps, copy=False)
-            decoded = (
-                mlx_vae.decode(source_mlx)
-                if args.mlx_cache_policy == "official"
-                else eager_cache_decode(mlx_vae, source_mlx)
-            )
+            if args.mlx_cache_policy == "official":
+                decoded = mlx_vae.decode(source_mlx)
+            elif args.mlx_cache_policy == "eager_bounded":
+                decoded = eager_cache_decode(mlx_vae, source_mlx)
+            elif args.mlx_cache_policy == "layer_eager_bounded":
+                decoded = layer_eager_decode(mlx_vae, source_mlx)
+            elif args.mlx_cache_policy == "op_eager_bounded":
+                decoded = layer_eager_decode(mlx_vae, source_mlx, operation_eager=True)
+            else:
+                decoded = spatial_tiled_decode(mlx_vae, source_mlx, args.spatial_tile_halo)
             pixels = mx.clip((decoded.astype(mx.float32) + 1.0) / 2.0, 0.0, 1.0)
             mx.eval(pixels)
             pixels_torch = torch.as_tensor(pixels)
             torch.mps.synchronize()
             outputs.append(pixels_torch.cpu())
         result = torch.stack(outputs)
-        if args.mlx_cache_policy == "eager_bounded":
+        if args.mlx_cache_policy != "official":
             del decoded, pixels, pixels_torch, source_mlx, source_mps
             mx.clear_cache()
         return result
@@ -309,7 +569,8 @@ def main() -> int:
             "torch_to_mlx": "mx.asarray(torch_mps_tensor, copy=False)",
             "mlx_to_torch": "torch.as_tensor(mlx_array)",
             "mlx_cache_policy": args.mlx_cache_policy,
-            "cache_release_in_timed_boundary": args.mlx_cache_policy == "eager_bounded",
+            "spatial_tile_halo": args.spatial_tile_halo,
+            "cache_release_in_timed_boundary": args.mlx_cache_policy != "official",
             "criteria_predeclared": CRITERIA,
             "production_environment_modified": False,
         },

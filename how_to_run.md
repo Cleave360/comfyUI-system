@@ -342,6 +342,28 @@ official MLX output exactly, but it does not reduce the measured 36.89 GiB
 transient peak for thirteen frames. The experiment therefore remains rejected
 under its predeclared 20 GiB memory gate.
 
+The activation-lifetime and spatial-tail candidates use the same harness:
+
+```bash
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 1,2,4 --warmups 1 --iterations 4 \
+  --mlx-cache-policy op_eager_bounded \
+  --output reports/benchmarks/qwen_vae_video_op_eager_full.json
+
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --latent-frames 1,2,4 --warmups 1 --iterations 4 \
+  --mlx-cache-policy spatial_tiled_bounded --spatial-tile-halo 32 \
+  --output reports/benchmarks/qwen_vae_video_spatial_tiled_full.json
+```
+
+Both remain experimental. The tiled path is valid only for the pinned Wan
+decoder layout and fails closed if the final stage is not the expected three
+attention-free residual blocks. It preserved the official MLX output exactly
+and reduced thirteen-frame peak memory to 24.74 GiB, still above the unchanged
+20 GiB gate.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
