@@ -224,3 +224,32 @@ Evidence:
   `987841b69a5a719dc6753b0bcaec4906c275ea69ae89cdd26381c8248da7e02e`,
   `63846ae6588e46276e98d7fae89e2cd29c93f6ea790f3033626b8ce66ed2e799`,
   and `8012335a019936d7889d3e0d78cdf7874cdae0037e5dbcf3bdbe8a52b354bb0d`.
+
+## 2026-10-11 — Native Wan Video and Newer-Torch UniPC Acceptance
+
+Current repo position:
+- A minimal governed Wan VACE 1.3B workflow now produces 17 frames at 832x480
+  in four steps and captures the genuine `[1,16,5,60,104]` temporal latent.
+- Production PyTorch 2.5.1 failed inside unchanged UniPC because MPS does not
+  implement `_linalg_solve_ex`. The isolated PyTorch 2.12.1 runtime passed a
+  direct solve control and completed the same governed UniPC graph in 56.209 s.
+- The real Wan latent and weights passed the MLX decoder gates twice. MLX
+  medians were 4.232/4.230 s versus Torch 10.301/11.274 s, for 2.434x/2.666x.
+  Both repeats had identical outputs, 13.596 GiB peak, and zero retained cache.
+
+Decisions and boundaries:
+- Do not fork or rewrite ComfyUI UniPC; it already calls the correct public
+  Torch API. Treat newer PyTorch as the candidate fix.
+- Do not replace production `.venv` yet. The isolated environment blocks the
+  incompatible production torchaudio binary and has not passed the whole stack.
+- Native temporal component acceptance is complete. End-to-end MLX server
+  integration and repeated full-workflow endurance remain open.
+
+Evidence:
+- `12 passed` focused tests before the measured run; final repository validation
+  was `50 passed`, bootstrap PASS, pip check clean, and 53 model artifacts PASS.
+- Capture / governed workflow / decisive / repeat SHA-256:
+  `68feda22d97e4e37c2d09d49a489053e82e4317829da7b9abd0aa703cf415f62`,
+  `23739633c8107cc16fb89492c3e913bd3ae966e3c736ea8397cb86d147a1021b`,
+  `2701d0d54bab3d35f58f893af17196ef9fc0bb5af30c0a30e724efc737f69c3a`,
+  and `abfd9133e030feb0e37711decc92e4d98d31c102d8288d669dcdd0d5f121a312`.

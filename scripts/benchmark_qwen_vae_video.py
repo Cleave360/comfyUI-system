@@ -537,6 +537,10 @@ def main() -> int:
     parser.add_argument("--first-capture", type=Path, default=DEFAULT_CAPTURES[0])
     parser.add_argument("--last-capture", type=Path, default=DEFAULT_CAPTURES[1])
     parser.add_argument(
+        "--native-capture", type=Path,
+        help="Use one captured genuine [B,16,T,H,W] temporal latent instead of interpolated endpoints.",
+    )
+    parser.add_argument(
         "--weights", type=Path,
         default=SOURCE / "models" / "vae" / "qwen_image_vae.safetensors",
     )
@@ -560,11 +564,16 @@ def main() -> int:
         default=ROOT / "reports" / "benchmarks" / "qwen_vae_video.json",
     )
     args = parser.parse_args()
-    paths = (args.first_capture.resolve(), args.last_capture.resolve(), args.weights.resolve())
+    native_capture_path = args.native_capture.resolve() if args.native_capture else None
+    if native_capture_path is None:
+        paths = (args.first_capture.resolve(), args.last_capture.resolve(), args.weights.resolve())
+    else:
+        paths = (native_capture_path, args.weights.resolve())
+    weights_path = args.weights.resolve()
     args.output = args.output.resolve()
     latent_frames = tuple(int(value) for value in args.latent_frames.split(",") if value.strip())
     if not all(path.is_file() for path in paths) or not (WAN_MODULES / "vae.py").is_file():
-        raise SystemExit("two captures, VAE weights, and the pinned MLX reference are required")
+        raise SystemExit("required capture(s), VAE weights, and the pinned MLX reference are missing")
     if args.warmups < 0 or args.iterations < 2 or args.iterations % 2:
         raise SystemExit("warmups must be non-negative; iterations must be an even integer >= 2")
     if not latent_frames or tuple(sorted(set(latent_frames))) != latent_frames:
@@ -580,12 +589,24 @@ def main() -> int:
     if not torch.backends.mps.is_available():
         raise SystemExit("Torch MPS is required")
 
-    first_capture = torch.load(paths[0], map_location="cpu", weights_only=False)
-    last_capture = torch.load(paths[1], map_location="cpu", weights_only=False)
-    first = first_capture["samples"].float()
-    last = last_capture["samples"].float()
-    if tensor_sha256(first) == tensor_sha256(last):
-        raise SystemExit("captures must contain distinct real latents")
+    native_latent = None
+    captured_native_output = None
+    if native_capture_path is None:
+        first_capture = torch.load(paths[0], map_location="cpu", weights_only=False)
+        last_capture = torch.load(paths[1], map_location="cpu", weights_only=False)
+        first = first_capture["samples"].float()
+        last = last_capture["samples"].float()
+        if tensor_sha256(first) == tensor_sha256(last):
+            raise SystemExit("captures must contain distinct real latents")
+    else:
+        native_payload = torch.load(native_capture_path, map_location="cpu", weights_only=False)
+        native_latent = native_payload["samples"].float()
+        captured_native_output = native_payload["output"].float()
+        if native_latent.ndim != 5 or tuple(native_latent.shape[0:2]) != (1, 16):
+            raise SystemExit("--native-capture must contain one [1,16,T,H,W] latent")
+        if native_latent.shape[2] <= 1:
+            raise SystemExit("--native-capture must contain more than one latent frame")
+        latent_frames = (native_latent.shape[2],)
 
     configure_comfy_imports()
     import comfy.options
@@ -593,11 +614,11 @@ def main() -> int:
     import comfy.sd
     import comfy.utils
 
-    state = comfy.utils.load_torch_file(str(paths[2]), safe_load=True)
+    state = comfy.utils.load_torch_file(str(weights_path), safe_load=True)
     torch_vae = comfy.sd.VAE(sd=state)
     WanVAE = load_official_wan_vae_class()
     mlx_vae = WanVAE()
-    mlx_weights = WanVAE.sanitize(mx.load(str(paths[2])))
+    mlx_weights = WanVAE.sanitize(mx.load(str(weights_path)))
     mlx_vae.load_weights(list(mlx_weights.items()), strict=False)
     mx.eval(mlx_vae.parameters())
 
@@ -650,7 +671,11 @@ def main() -> int:
         return result
 
     report: dict[str, Any] = {
-        "schema_version": "kindred.comfyui.qwen_vae_video.v1",
+        "schema_version": (
+            "kindred.comfyui.wan_vae_native_video.v1"
+            if native_capture_path is not None
+            else "kindred.comfyui.qwen_vae_video.v1"
+        ),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "runtime": {
             "python": sys.version.split()[0],
@@ -665,18 +690,32 @@ def main() -> int:
             ).strip(),
             "module": "video/wan2.1/wan/vae.py",
         },
-        "artifacts": {
-            "first_capture": str(paths[0]),
-            "first_capture_sha256": file_sha256(paths[0]),
-            "last_capture": str(paths[1]),
-            "last_capture_sha256": file_sha256(paths[1]),
-            "weights": str(paths[2]),
-            "weights_sha256": file_sha256(paths[2]),
-        },
+        "artifacts": (
+            {
+                "native_capture": str(native_capture_path),
+                "native_capture_sha256": file_sha256(native_capture_path),
+                "weights": str(weights_path),
+                "weights_sha256": file_sha256(weights_path),
+            }
+            if native_capture_path is not None
+            else {
+                "first_capture": str(paths[0]),
+                "first_capture_sha256": file_sha256(paths[0]),
+                "last_capture": str(paths[1]),
+                "last_capture_sha256": file_sha256(paths[1]),
+                "weights": str(weights_path),
+                "weights_sha256": file_sha256(weights_path),
+            }
+        ),
         "method": {
-            "endpoint_latents_are_real_qwen_captures": True,
-            "intermediate_latents": "deterministic linear interpolation between real endpoints",
-            "video_generation_quality_claimed": False,
+            "endpoint_latents_are_real_qwen_captures": native_capture_path is None,
+            "intermediate_latents": (
+                "none; genuine Wan VACE temporal latent captured after diffusion"
+                if native_capture_path is not None
+                else "deterministic linear interpolation between real endpoints"
+            ),
+            "native_temporal_generation_capture": native_capture_path is not None,
+            "video_generation_quality_claimed": native_capture_path is not None,
             "decoder_scaling_and_temporal_consistency_only": True,
             "latent_frames": latent_frames,
             "warmups_per_decoder_and_length": args.warmups,
@@ -699,7 +738,11 @@ def main() -> int:
     for latent_count in latent_frames:
         global MEMORY_TRACE
         MEMORY_TRACE = None
-        latent = build_temporal_latent(first, last, latent_count)
+        latent = (
+            native_latent.clone()
+            if native_latent is not None
+            else build_temporal_latent(first, last, latent_count)
+        )
         expected_output_frames = 1 + 4 * (latent_count - 1)
         for _ in range(args.warmups):
             stock_decode(latent)
@@ -780,6 +823,17 @@ def main() -> int:
                 ),
             },
         }
+        if captured_native_output is not None:
+            capture_hash = tensor_sha256(captured_native_output)
+            stock_hash = tensor_sha256(outputs["stock"])
+            result["native_capture_replay"] = {
+                "capture_output_sha256": capture_hash,
+                "stock_output_matches_capture_exactly": stock_hash == capture_hash,
+                "quality": image_metrics(outputs["stock"], captured_native_output),
+            }
+            result["gates"]["native_capture_stock_replay_exact"] = (
+                stock_hash == capture_hash
+            )
         if args.trace_memory:
             result["memory_trace"] = {
                 "records": trace_records,

@@ -51,6 +51,25 @@ def test_model_manifest_matches_local_inventory():
     assert isinstance(locked["incomplete_downloads"], list)
 
 
+def test_model_manifest_preserves_declared_mps_verification(tmp_path, monkeypatch):
+    models = tmp_path / "models"
+    artifact = models / "vae" / "test_fp16.safetensors"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"model")
+    metadata = tmp_path / "model_metadata.toml"
+    metadata.write_text(
+        '[models."models/vae/test_fp16.safetensors"]\n'
+        'mps_compatibility = "verified_mps_workflow"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(model_manifest, "ROOT", tmp_path)
+    monkeypatch.setattr(model_manifest, "MODELS", models)
+    monkeypatch.setattr(model_manifest, "METADATA", metadata)
+    monkeypatch.setattr(model_manifest, "LOCK", tmp_path / "models.lock.json")
+    scanned = model_manifest.scan(False)
+    assert scanned["artifacts"][0]["mps_compatibility"] == "verified_mps_workflow"
+
+
 def test_port_probe_refuses_an_existing_listener(monkeypatch):
     class OccupiedSocket:
         def __enter__(self): return self

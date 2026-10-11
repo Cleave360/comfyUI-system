@@ -554,3 +554,49 @@ Local ignored evidence:
   `63846ae6588e46276e98d7fae89e2cd29c93f6ea790f3033626b8ce66ed2e799`
 - Independent repeat SHA-256:
   `8012335a019936d7889d3e0d78cdf7874cdae0037e5dbcf3bdbe8a52b354bb0d`
+
+## Native Wan video acceptance and UniPC runtime result
+
+The real-video acceptance used the installed Wan VACE 1.3B model, its CausVid
+LoRA, FP16 UMT5 encoder, `wan_2.1_vae.safetensors`, and the committed 832x480
+reference image. The minimal governed workflow generated 17 frames in four
+diffusion steps. Its post-diffusion latent was genuinely temporal:
+`[1,16,5,60,104]`, rather than an interpolation constructed by the benchmark.
+
+The first attempt exposed a runtime boundary. ComfyUI's unchanged UniPC code
+already calls `torch.linalg.solve`; production PyTorch 2.5.1 lacks the
+corresponding MPS implementation and failed after two sampling steps. A direct
+2x2 control reproduced the failure. The same control returned the correct
+solution under the isolated PyTorch 2.12.1 environment, and the unchanged
+UniPC workflow then completed all four steps. It produced 17 finite, non-flat
+frames in 56.209 seconds. This supports an isolated runtime-upgrade candidate,
+not a ComfyUI sampler fork or an in-place production upgrade. The experimental
+runtime deliberately blocks the ABI-incompatible production torchaudio binary.
+
+The captured native latent and exact Wan weights then passed the original
+decoder gates with the cache-consuming, spatial-resample-chunked MLX path:
+
+| Run | Torch 2.12 MPS | MLX | Speedup | RGB MAE | MLX peak | Retained cache |
+|---|---:|---:|---:|---:|---:|---:|
+| Decisive | 10.301 s | 4.232 s | **2.434x** | 0.156 | **13.596 GiB** | 0 B |
+| Independent repeat | 11.274 s | 4.230 s | **2.666x** | 0.156 | **13.596 GiB** | 0 B |
+
+Both runs produced identical Torch and MLX hashes across repeats. The Torch
+benchmark output was byte-identical to the output captured inside the server.
+Minimum per-frame PSNR was 61.65 dB and worst temporal-difference MAE was 0.187
+RGB levels. This closes the native-latent component gate and improves the peak
+from 19.908 GiB for the synthetic 1024x576/13-frame trial to 13.596 GiB at the
+real workflow's 832x480/17-frame tier. It still does not establish an MLX
+end-to-end server speedup: diffusion and text encoding remained PyTorch, while
+the MLX comparison was performed after capture.
+
+Local ignored evidence:
+
+- Native Wan capture SHA-256:
+  `68feda22d97e4e37c2d09d49a489053e82e4317829da7b9abd0aa703cf415f62`
+- Governed workflow report SHA-256:
+  `23739633c8107cc16fb89492c3e913bd3ae966e3c736ea8397cb86d147a1021b`
+- Native decoder report SHA-256:
+  `2701d0d54bab3d35f58f893af17196ef9fc0bb5af30c0a30e724efc737f69c3a`
+- Independent repeat SHA-256:
+  `abfd9133e030feb0e37711decc92e4d98d31c102d8288d669dcdd0d5f121a312`

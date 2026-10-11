@@ -16,7 +16,7 @@ def source() -> str:
 def test_video_benchmark_declares_scope_and_fixed_gates():
     value = source()
     assert "kindred.comfyui.qwen_vae_video.v1" in value
-    assert '"video_generation_quality_claimed": False' in value
+    assert '"video_generation_quality_claimed": native_capture_path is not None' in value
     assert '"global_rgb_mae_max_each": 1.0' in value
     assert '"per_frame_rgb_mae_max_each": 1.25' in value
     assert '"per_frame_psnr_db_min_each": 40.0' in value
@@ -31,7 +31,7 @@ def test_video_benchmark_uses_real_endpoints_and_zero_copy():
     assert "qwen_vae_video_endpoint_b.pt" in value
     assert "mx.asarray(source_mps, copy=False)" in value
     assert "torch.as_tensor(pixels)" in value
-    assert '"endpoint_latents_are_real_qwen_captures": True' in value
+    assert '"endpoint_latents_are_real_qwen_captures": native_capture_path is None' in value
     assert '"mode_order": "stock,mlx then mlx,stock alternating"' in value
     assert "temporary.replace(destination)" in value
 
@@ -69,3 +69,10 @@ def test_video_benchmark_has_bounded_temporal_cache_candidate():
     assert "def temporal_chunked_spatial_upsample" in value
     assert 'layer.mode != "upsample2d"' in value
     assert "chunk_spatial_resample=True" in value
+
+
+def test_video_benchmark_accepts_genuine_temporal_capture():
+    value = source()
+    assert '"--native-capture"' in value
+    assert "native_temporal_generation_capture" in value
+    assert "native_capture_stock_replay_exact" in value

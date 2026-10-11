@@ -388,6 +388,46 @@ independently at the same peak and 2.105x. Keep the candidate isolated until a
 real video model supplies native temporal latents and the server path passes a
 repeated endurance run.
 
+To reproduce the native Wan VACE acceptance, use the isolated newer-Torch
+environment. Production PyTorch 2.5.1 cannot execute UniPC's
+`torch.linalg.solve` on MPS; do not patch the sampler or enable process-wide CPU
+fallback. Port 8288 must be free:
+
+```bash
+mkdir -p reports/runtime/wan-native-video/user
+KINDRED_WAN_VAE_CAPTURE="$PWD/reports/captures/wan_vace_1.3b_native_video_torch212.pt" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/capture_wan_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/wan-native-video/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_apple_silicon.py run \
+  --profile wan-native-video --base-url http://127.0.0.1:8288 \
+  --runs 1 --seed 770 --timeout 1800 --sample-interval 2 \
+  --no-cold-first \
+  --output reports/benchmarks/wan_native_video_torch212_capture_run.json
+```
+
+Stop the capture server before the component comparison so its loaded models
+do not contaminate memory. Then run:
+
+```bash
+MLX_ENABLE_TF32=0 reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/benchmark_qwen_vae_video.py \
+  --native-capture reports/captures/wan_vace_1.3b_native_video_torch212.pt \
+  --weights models/vae/wan_2.1_vae.safetensors \
+  --warmups 1 --iterations 4 \
+  --mlx-cache-policy cache_consuming_chunked_resample --trace-memory \
+  --output reports/benchmarks/wan_vae_native_video_cache_chunked.json
+```
+
+This passed the native-latent component gates twice at 2.434x and 2.666x, with
+the same 13.596 GiB MLX peak, identical output hashes, and zero retained MLX
+cache. Production remains pinned to PyTorch 2.5.1 pending full dependency,
+audio, image-workflow, and repeated-server validation of a newer runtime.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

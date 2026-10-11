@@ -81,7 +81,9 @@ def scan(with_hashes: bool) -> dict:
                 "license": declared.get("license", "unknown_review_required"),
                 "notes": declared.get("notes", ""),
                 "precision": precision,
-                "mps_compatibility": mps_status(precision),
+                "mps_compatibility": declared.get(
+                    "mps_compatibility", mps_status(precision)
+                ),
             }
             artifacts.append(artifact)
     incomplete_downloads = []

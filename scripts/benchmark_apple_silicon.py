@@ -53,6 +53,11 @@ PROFILES = {
         "description": "Qwen-Image 2512 BF16, 1024x576, 20 steps; proven production-quality route",
         "prompt": "Editorial photograph of a beautifully renovated British townhouse drawing room, authentic Georgian proportions, natural daylight, accurate materials, premium property campaign photography, realistic and finely detailed",
     },
+    "wan-native-video": {
+        "workflow": "ComfyUI-workflows/wan-vace-1.3b-native-video-api.json",
+        "description": "Wan VACE 1.3B, 832x480, 17 frames, 4 steps; native temporal VAE acceptance",
+        "prompt": "Very slow cinematic dolly forward through cold fog toward a small warm light, drifting embers, realistic motion, photorealistic, cinematic lighting",
+    },
 }
 
 
@@ -96,7 +101,7 @@ def configure_workflow(
             inputs["seed"] = seed
             if steps is not None:
                 inputs["steps"] = steps
-        elif node_type in {"EmptyLatentImage", "EmptySD3LatentImage"}:
+        elif node_type in {"EmptyLatentImage", "EmptySD3LatentImage", "WanVaceToVideo"}:
             if width is not None:
                 inputs["width"] = width
             if height is not None:
@@ -273,7 +278,7 @@ def inspect_profile(name: str) -> dict[str, Any]:
         "name": name,
         **PROFILES[name],
         "models": [node["inputs"] for node in nodes if node.get("class_type") in {"UNETLoader", "CheckpointLoaderSimple"}],
-        "latent": [node["inputs"] for node in nodes if node.get("class_type") in {"EmptyLatentImage", "EmptySD3LatentImage"}],
+        "latent": [node["inputs"] for node in nodes if node.get("class_type") in {"EmptyLatentImage", "EmptySD3LatentImage", "WanVaceToVideo"}],
         "scheduler": [node["inputs"] for node in nodes if node.get("class_type") in {"BasicScheduler", "KSampler"}],
     }
 

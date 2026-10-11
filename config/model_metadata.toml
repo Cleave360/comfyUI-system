@@ -9,3 +9,31 @@ schema_version = "comfyui.model-metadata.v1"
 # notes = "Acquisition and compatibility evidence"
 
 [models]
+
+[models."models/diffusion_models/qwen_image_2512_bf16.safetensors"]
+notes = "Verified in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/text_encoders/qwen_2.5_vl_7b.safetensors"]
+notes = "Verified as the text encoder in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/vae/qwen_image_vae.safetensors"]
+notes = "Verified as the VAE in governed Qwen-Image 2512 BF16 benchmark on Apple M3 Ultra, 2026-10-10."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors"]
+notes = "Verified in governed 832x480 17-frame Wan VACE workflow on Apple M3 Ultra with isolated PyTorch 2.12.1 MPS, 2026-10-11. Production PyTorch 2.5.1 UniPC remains unsupported."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/loras/Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors"]
+notes = "Verified in governed 832x480 17-frame Wan VACE workflow on Apple M3 Ultra with isolated PyTorch 2.12.1 MPS, 2026-10-11."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/text_encoders/umt5_xxl_fp16.safetensors"]
+notes = "Verified as CPU-resident text encoder in governed 832x480 17-frame Wan VACE workflow using isolated PyTorch 2.12.1 MPS, 2026-10-11."
+mps_compatibility = "verified_mps_workflow"
+
+[models."models/vae/wan_2.1_vae.safetensors"]
+notes = "Verified in governed 832x480 17-frame Wan VACE workflow and native temporal Torch/MLX decoder comparison on Apple M3 Ultra, 2026-10-11."
+mps_compatibility = "verified_mps_workflow"

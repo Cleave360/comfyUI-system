@@ -1,0 +1,101 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.1_vace_1.3B_fp16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["1", 0],
+      "lora_name": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+      "strength_model": 0.7
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp16.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "PROMPT_PLACEHOLDER",
+      "clip": ["3", 0]
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "static, frozen motion, flicker, jitter, blurry, low quality, distorted, watermark, text",
+      "clip": ["3", 0]
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "light_motif_s11_832x480.png"
+    }
+  },
+  "8": {
+    "class_type": "WanVaceToVideo",
+    "inputs": {
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "vae": ["4", 0],
+      "reference_image": ["7", 0],
+      "width": 832,
+      "height": 480,
+      "length": 17,
+      "batch_size": 1,
+      "strength": 1.0
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 770,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["2", 0],
+      "positive": ["8", 0],
+      "negative": ["8", 1],
+      "latent_image": ["8", 2]
+    }
+  },
+  "10": {
+    "class_type": "TrimVideoLatent",
+    "inputs": {
+      "samples": ["9", 0],
+      "trim_amount": ["8", 3]
+    }
+  },
+  "11": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["10", 0],
+      "vae": ["4", 0]
+    }
+  },
+  "12": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["11", 0],
+      "filename_prefix": "benchmarks/wan-vace-native-video"
+    }
+  }
+}

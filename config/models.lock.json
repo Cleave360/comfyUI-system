@@ -1,6 +1,6 @@
 {
   "schema_version": "comfyui.models.lock.v1",
-  "generated_at": "2026-10-09T19:22:04.626579+00:00",
+  "generated_at": "2026-10-11T15:42:23.490081+00:00",
   "hashes_complete": true,
   "artifact_count": 53,
   "total_size_bytes": 466485856755,
@@ -227,9 +227,9 @@
       "sha256": "640ccc0577e6a5d4bb15cd91b11b699ef914fc55f126c5a1c544e152130784f2",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified in governed 832x480 17-frame Wan VACE workflow on Apple M3 Ultra with isolated PyTorch 2.12.1 MPS, 2026-10-11. Production PyTorch 2.5.1 UniPC remains unsupported.",
       "precision": "fp16",
-      "mps_compatibility": "candidate_not_workflow_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
@@ -315,9 +315,9 @@
       "sha256": "8e5331e780ffb16520bf1ff7ba90188ebd271a4698e5be8e618800e809cca704",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified in governed 832x480 17-frame Wan VACE workflow on Apple M3 Ultra with isolated PyTorch 2.12.1 MPS, 2026-10-11.",
       "precision": "unknown",
-      "mps_compatibility": "unknown_not_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/text_encoders/byt5_small_glyphxl_fp16.safetensors",
@@ -447,9 +447,9 @@
       "sha256": "7b8850f1961e1cf8a77cca4c964a358d303f490833c6c087d0cff4b2f99db2af",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified as CPU-resident text encoder in governed 832x480 17-frame Wan VACE workflow using isolated PyTorch 2.12.1 MPS, 2026-10-11.",
       "precision": "fp16",
-      "mps_compatibility": "candidate_not_workflow_verified"
+      "mps_compatibility": "verified_mps_workflow"
     },
     {
       "path": "models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
@@ -590,9 +590,9 @@
       "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
       "source": "unknown_local_artifact",
       "license": "unknown_review_required",
-      "notes": "",
+      "notes": "Verified in governed 832x480 17-frame Wan VACE workflow and native temporal Torch/MLX decoder comparison on Apple M3 Ultra, 2026-10-11.",
       "precision": "unknown",
-      "mps_compatibility": "unknown_not_verified"
+      "mps_compatibility": "verified_mps_workflow"
     }
   ]
 }
