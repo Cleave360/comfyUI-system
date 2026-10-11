@@ -34,12 +34,17 @@ RUN_MODES = tuple(
         "KINDRED_WAN_MLX_VAE_RUN_MODES", "mlx",
     ).split(",") if value.strip()
 )
+CLEANUP_POLICY = os.environ.get("KINDRED_WAN_MPS_CLEANUP_POLICY", "none").strip()
 if not REPORT_PATH.is_absolute():
     REPORT_PATH = ROOT / REPORT_PATH
 if not WEIGHTS_PATH.is_absolute():
     WEIGHTS_PATH = ROOT / WEIGHTS_PATH
 if not RUN_MODES or any(value not in {"stock", "mlx"} for value in RUN_MODES):
     raise SystemExit("KINDRED_WAN_MLX_VAE_RUN_MODES must contain only stock or mlx")
+if CLEANUP_POLICY not in {"none", "torch_empty_cache"}:
+    raise SystemExit(
+        "KINDRED_WAN_MPS_CLEANUP_POLICY must be none or torch_empty_cache"
+    )
 if not WEIGHTS_PATH.is_file():
     raise SystemExit(f"Wan VAE weights not found: {WEIGHTS_PATH}")
 
@@ -56,6 +61,7 @@ sys.modules["torchaudio"] = None
 
 import main as comfy_main  # noqa: E402 - ComfyUI owns Torch initialization
 import mlx.core as mx  # noqa: E402
+import psutil  # noqa: E402
 import torch  # noqa: E402
 from comfy import sd  # noqa: E402
 import nodes  # noqa: E402
@@ -124,7 +130,20 @@ state: dict[str, Any] = {
     "model_load_seconds": None,
     "decode_index": 0,
     "records": [],
+    "sampler_records": [],
 }
+
+
+def memory_snapshot() -> dict[str, int]:
+    return {
+        "torch_current_allocated_bytes": torch.mps.current_allocated_memory(),
+        "torch_driver_allocated_bytes": torch.mps.driver_allocated_memory(),
+        "torch_recommended_max_bytes": torch.mps.recommended_max_memory(),
+        "mlx_active_memory_bytes": mx.get_active_memory(),
+        "mlx_cache_memory_bytes": mx.get_cache_memory(),
+        "process_rss_bytes": psutil.Process().memory_info().rss,
+        "system_available_bytes": psutil.virtual_memory().available,
+    }
 
 
 def mode_for_decode(index: int) -> str:
@@ -176,8 +195,10 @@ def write_report() -> None:
             "mlx_to_torch": "torch.as_tensor(mlx_array)",
             "output_device": "cpu",
             "mlx_enable_tf32": os.environ.get("MLX_ENABLE_TF32", "") == "1",
+            "cleanup_policy": CLEANUP_POLICY,
         },
         "model_load_seconds": state["model_load_seconds"],
+        "sampler_records": state["sampler_records"],
         "records": state["records"],
     }
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -214,6 +235,29 @@ def mlx_decode(samples_in: torch.Tensor) -> torch.Tensor:
 
 
 original_decode = sd.VAE.decode
+original_common_ksampler = nodes.common_ksampler
+
+
+def routed_common_ksampler(*args, **kwargs):
+    index = len(state["sampler_records"])
+    before = memory_snapshot()
+    torch.mps.synchronize()
+    started = time.perf_counter()
+    output = original_common_ksampler(*args, **kwargs)
+    torch.mps.synchronize()
+    record = {
+        "sampler_index": index,
+        "seconds": round(time.perf_counter() - started, 6),
+        "memory_before": before,
+        "memory_after": memory_snapshot(),
+    }
+    state["sampler_records"].append(record)
+    write_report()
+    print(
+        f"Kindred Wan sampler={index} seconds={record['seconds']:.6f}",
+        flush=True,
+    )
+    return output
 
 
 def routed_decode(self, samples_in, vae_options={}):
@@ -256,6 +300,10 @@ def routed_decode(self, samples_in, vae_options={}):
         "mlx_cache_memory_bytes": mx.get_cache_memory() if mode == "mlx" else None,
     }
     state["records"].append(record)
+    record["memory_before_cleanup"] = memory_snapshot()
+    if CLEANUP_POLICY == "torch_empty_cache":
+        torch.mps.empty_cache()
+    record["memory_after_cleanup"] = memory_snapshot()
     write_report()
     print(
         f"Kindred Wan VAE mode={mode} decode={index} seconds={record['seconds']:.6f}",
@@ -264,6 +312,7 @@ def routed_decode(self, samples_in, vae_options={}):
     return output
 
 
+nodes.common_ksampler = routed_common_ksampler
 sd.VAE.decode = routed_decode
 write_report()
 event_loop, _, start_all = comfy_main.start_comfyui()

@@ -644,3 +644,50 @@ Local ignored evidence:
   `efb896141c0d73f6d6bc62bce2b9fe597021b2e6be07a23fd4d1069209ca4a8d`
 - Full-stack server ledger SHA-256:
   `8ac767e6dd11ece6cccb636672277db3a9f641d1073dcdc0a9e73f76c16d4bdb`
+
+### Wan endurance and sustained-load diagnosis
+
+The non-stationary full-stack result was separated into a decoder-only control
+and four same-process, fixed-seed full-workflow trials. Each full-workflow trial
+used two warm-ups followed by six measured runs at four diffusion steps. The
+sampler, decoder, output hashes, Torch/MLX allocator state, process RSS, and
+system-available memory were recorded at explicit phase boundaries.
+
+Decoder-only execution was stable without cleanup: Torch held a 10.324-second
+median, MLX held 4.215 seconds, and MLX was 2.449x faster. Torch and MLX
+p95/median ratios were 1.036 and 1.004, respectively, with byte-identical
+outputs within each mode. This falsifies the hypothesis that intrinsic decoder
+drift caused the earlier collapse.
+
+The full-workflow discriminator produced these results:
+
+| Decoder / boundary policy | Gap | Sampler median | Sampler p95/median | Total median | Total p95/median | Torch driver growth | Result |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Stock / none | 2 s | 20.246 s | 1.502 | 35.121 s | 1.542 | 6.572 GiB | timing and memory fail |
+| Stock / `empty_cache` | 2 s | 21.740 s | 1.417 | 37.136 s | 1.406 | 0 GiB | timing fail |
+| Stock / none | 30 s | 17.679 s | 1.002 | 30.103 s | 1.000 | 29.977 GiB | timing pass, memory fail |
+| MLX / none | 2 s | 17.644 s | 1.033 | 24.091 s | 1.000 | 4.523 GiB | timing pass, memory fail |
+| MLX / `empty_cache` | 2 s | 18.311 s | 1.151 | 24.129 s | 1.165 | 0.055 GiB | **all gates pass** |
+
+The interventions separate timing from the Torch driver counter. Cache clearing
+bounded the counter but did not stabilize stock execution; a 30-second recovery
+interval stabilized timing despite nearly 30 GiB of reported growth. The coarse
+macOS telemetry reported neither a thermal nor memory-pressure warning. The
+supported inference is therefore sustained GPU load/recovery behavior, not a
+proven thermal mechanism and not simple allocator exhaustion.
+
+The strongest isolated candidate is MLX VAE decode followed by a Torch MPS
+cache boundary. It preserved fixed-seed output determinism and passed all
+predeclared timing and memory-growth gates. It is not promoted to production:
+the candidate still runs in the isolated PyTorch 2.12 environment, audio nodes
+remain unavailable there, and six measured runs are not a production soak.
+
+Local ignored evidence SHA-256:
+
+- Decoder-only endurance: `803a6cc0dbe161ffc51a8f5f7f7a483db8274442a0248fc646401d1da18e1521`
+- Stock, 2-second gap: `805258e6868b2bad66be4552b01d9204baf735c0d5c7ad12a03517b0fe553c95`
+- Stock plus cache clear: `061861b153477196b63eeeaccd4ca43a4cbf717ff11ce0b73d7074c55adfe6ee`
+- Stock, 30-second gap: `b46437652284dd7a27d521bc9737e2a8f70f231798ac2d8b38c5d71a6dfe172a`
+- MLX, 2-second gap: `22f204aaea64e4348f292574687d161d8a95892bdd9ab9923a0076f204c82568`
+- MLX plus cache clear: `7e71fc639946233029ac931b9b4a2f62e5b0395f53ea43f970c153f7a9667c93`
+- Passing candidate server ledger: `f7e93b42adc229f36c32e0f8d5cc569636404f4812b802191201b0871ea73dca`

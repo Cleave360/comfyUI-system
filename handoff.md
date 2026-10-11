@@ -283,3 +283,38 @@ Evidence:
   `8ac767e6dd11ece6cccb636672277db3a9f641d1073dcdc0a9e73f76c16d4bdb`.
 - Manual comparison of all three midpoint pairs found no visible stock/MLX
   divergence; first/middle/last inspection confirmed temporal motion.
+
+## 2026-10-11 — Wan Sustained-Load Diagnosis and Passing Candidate
+
+Current repo position:
+- Decoder-only endurance passed with stable 10.324-second Torch and
+  4.215-second MLX medians (2.449x), ruling out intrinsic VAE drift.
+- Repeated stock full workflows at two-second spacing reproduced the collapse:
+  sampler p95/median 1.502, total p95/median 1.542, and 6.572 GiB Torch driver
+  growth. Fixed-seed output hashes remained identical.
+- `torch.mps.empty_cache()` eliminated stock driver growth but did not stabilize
+  timing. A 30-second gap made timings almost perfectly flat despite 29.977 GiB
+  reported driver growth. Coarse macOS telemetry reported no thermal or memory
+  pressure warning, so the evidence supports sustained-load recovery behavior
+  without proving a thermal cause.
+- All-MLX decode at two-second spacing stabilized timing. Combining it with the
+  post-decode Torch cache boundary passed every fixed gate: 24.129-second total
+  median, 1.165 p95/median, 1.083 last-half/first-half ratio, and 56 MiB driver
+  growth across six measured workflows.
+
+Decisions and boundaries:
+- Retain MLX decode plus the cache boundary as the strongest isolated candidate.
+  It is not a production promotion: PyTorch 2.12 audio compatibility and a
+  longer soak across image/video workflows remain open.
+- Do not interpret `torch_driver_allocated_memory` as a direct throttling cause;
+  the cache-clear and cooldown interventions falsified that simple model.
+- Production services and the Torch 2.5.1 environment remain unchanged.
+
+Evidence:
+- Decoder-only / stock / stock-cache / cooldown / MLX / passing-combined report
+  hashes: `803a6cc0dbe161ffc51a8f5f7f7a483db8274442a0248fc646401d1da18e1521`,
+  `805258e6868b2bad66be4552b01d9204baf735c0d5c7ad12a03517b0fe553c95`,
+  `061861b153477196b63eeeaccd4ca43a4cbf717ff11ce0b73d7074c55adfe6ee`,
+  `b46437652284dd7a27d521bc9737e2a8f70f231798ac2d8b38c5d71a6dfe172a`,
+  `22f204aaea64e4348f292574687d161d8a95892bdd9ab9923a0076f204c82568`,
+  and `7e71fc639946233029ac931b9b4a2f62e5b0395f53ea43f970c153f7a9667c93`.

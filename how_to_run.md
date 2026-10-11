@@ -459,6 +459,38 @@ least-contended pair saving rather than the inflated 72.273-second median as
 the practical reference. Stop port 8288 after the run; this remains an isolated
 experimental server with audio nodes unavailable.
 
+To reproduce the endurance diagnosis, use eight identical modes, then run two
+warm-ups and six fixed-seed measurements. The passing isolated candidate uses
+the MLX decoder and clears only Torch's reclaimable MPS cache after each decode:
+
+```bash
+mkdir -p reports/runtime/wan-sampler-mlx-empty-cache/user
+MLX_ENABLE_TF32=0 \
+KINDRED_WAN_MLX_VAE_RUN_MODES=mlx,mlx,mlx,mlx,mlx,mlx,mlx,mlx \
+KINDRED_WAN_MPS_CLEANUP_POLICY=torch_empty_cache \
+KINDRED_WAN_MLX_VAE_REPORT="$PWD/reports/profiles/wan_sampler_mlx_empty_cache_server.json" \
+  reports/venvs/qwen-mlx-torch212/bin/python \
+  scripts/wan_mlx_vae_server.py \
+  --listen 127.0.0.1 --port 8288 --disable-all-custom-nodes \
+  --disable-auto-launch \
+  --user-directory "$PWD/reports/runtime/wan-sampler-mlx-empty-cache/user"
+
+ADAPTIVE_BASE=http://127.0.0.1:8080 ADAPTIVE_API_KEY=YOUR_LOCAL_KEY \
+  .venv/bin/python scripts/benchmark_wan_mps_sampler_endurance.py \
+  --base-url http://127.0.0.1:8288 --seed 773 \
+  --warmups 2 --runs 6 --steps 4 --cooldown-seconds 2 \
+  --timeout 1800 --sample-interval 2 \
+  --server-report reports/profiles/wan_sampler_mlx_empty_cache_server.json \
+  --output reports/benchmarks/wan_sampler_endurance_mlx_empty_cache.json
+```
+
+That candidate passed the fixed stability and memory-growth gates with a
+24.129-second median total, 1.165 total p95/median, and 56 MiB Torch driver
+growth. For diagnosis, set all modes to `stock`, set the cleanup policy to
+`none` or `torch_empty_cache`, or use a 30-second cooldown. The complete
+five-configuration comparison and evidence hashes are in `docs/QWEN_MPS_PROFILE.md`.
+This is not the production startup path.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
