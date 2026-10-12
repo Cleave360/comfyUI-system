@@ -822,6 +822,66 @@ performance is significantly impacted. The signal is system-wide and was not
 captured in this completed screen. No Celsius or fixed GPU throttling threshold
 is recorded because Apple exposes no supported public value for either.
 
+#### Counterbalanced confirmation design
+
+The confirmation uses two rounds and four fresh-server arms: fixed 10 seconds
+then adaptive, followed by adaptive then fixed 10 seconds. Each arm repeats the
+same two warm-ups and four measured fixed-seed Qwen/Wan pairs. This AB/BA order
+separates a policy effect from the monotonic machine-state/order explanation
+left open by the first screen.
+
+Before execution, the acceptance boundary is fixed as follows:
+
+- every workflow must be valid and deterministic;
+- adaptive readiness must be 100%;
+- neither policy may record a `serious` or `critical` thermal sample;
+- pooled adaptive throughput must be no more than 2% below pooled fixed-10s;
+- adaptive must retain a shorter median wait than fixed-10s;
+- pooled adaptive Qwen and Wan p95/median must each be at most 1.35; and
+- the larger round-specific adaptive/fixed throughput ratio divided by the
+  smaller ratio must be at most 1.10.
+
+The 2% boundary is a non-inferiority test, not a claim that adaptive is faster.
+If it passes while waiting materially less, adaptive becomes the stronger queue
+policy candidate. Promotion would still require a longer production-like soak.
+
+#### Counterbalanced confirmation result
+
+The AB/BA confirmation completed four fresh-server arms and all 40 governed
+workflows. All outputs were valid and deterministic, adaptive readiness was
+100%, and no recovery sample reached Apple's `serious` or `critical` thermal
+state. The thermal signal moved from `nominal` in the first arm to `fair` in
+the later arms, so the experiment did observe evolving system pressure without
+crossing Apple's documented performance-impact boundary.
+
+| Policy | Runs | Median wait | Outputs/hour | Qwen median | Qwen p95/median | Wan median | Wan p95/median |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Adaptive | 16 | **4.089 s** | **30.423** | 153.558 s | **1.033** | 74.250 s | **1.000** |
+| Fixed 10 s | 16 | 10.032 s | 27.977 | 154.537 s | 1.299 | 72.321 s | 1.359 |
+
+Adaptive delivered 1.087x pooled throughput while removing 82.875 seconds of
+recovery waiting across the two arms. The fixed policy's pooled tails include
+a round-one 200.791-second Qwen render and 98.313-second Wan render; its
+reversed round was stable, so those stalls cannot be attributed to fixed waits
+alone.
+
+The overall result is **fail**, preserving the predeclared acceptance boundary.
+Adaptive/fixed throughput was 1.145 in round one and 1.029 in round two. Their
+1.113 interaction spread exceeded the 1.10 maximum. This is positive evidence
+for adaptive throughput, readiness, and tail stability, but it does not establish
+an order-independent policy effect or justify production promotion. A follow-up
+should use additional randomized or repeated blocks and retain these results as
+immutable evidence rather than widening the gate after observation.
+
+Local ignored evidence SHA-256:
+
+- Comparison: `8e5b24c5d96679d7c0edb1555f0328a11e6df446dd94eff3553bbc26bd9fad2c`
+- Manifest: `bf3d15dffa88909a3ac89a3b021ea29bc10388d0bf136cd35b0a40fd59c08a48`
+- Round 1 fixed/adaptive: `be6e0baf568e92551d4c29ae44621565b6fc0e75085793ba3c4624c14ade4235`,
+  `fcc94e5b8579dcc3842a7fb2ef391b290e107244dfb6ef54c72d4216a78892bd`
+- Round 2 adaptive/fixed: `e291ee0c3ab67af97993c4f6ae47253fc2cea78c9f186b8111038814bb61ee6b`,
+  `e131bab8f6e441a78d3c1070587fbb1f4375a54cde79870a4f9a2929a6686d40`
+
 Local ignored evidence SHA-256:
 
 - Adaptive: `26839703dc8485d331d8f58eaea2c11f8c670720e7e838494fa6b9568aa2fffb`

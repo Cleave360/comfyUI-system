@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import sys
 import time
 from typing import Any
@@ -48,11 +49,18 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=1800.0)
     parser.add_argument("--sample-interval", type=float, default=2.0)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--arm-label")
+    parser.add_argument("--counterbalance-round", type=int)
+    parser.add_argument("--counterbalance-position", type=int, choices=(1, 2))
     args = parser.parse_args()
     if args.pairs < 2:
         raise SystemExit("--pairs must be at least two")
     if args.policy == "fixed" and args.cooldown_seconds < 0:
         raise SystemExit("--cooldown-seconds cannot be negative")
+    if args.arm_label and not re.fullmatch(r"[a-z0-9-]+", args.arm_label):
+        raise SystemExit("--arm-label must contain only lowercase letters, digits, or hyphens")
+    if (args.counterbalance_round is None) != (args.counterbalance_position is None):
+        raise SystemExit("counterbalance round and position must be supplied together")
     args.output = args.output.resolve()
 
     base.load_dotenv()
@@ -99,6 +107,9 @@ def main() -> int:
             "wan_steps": args.wan_steps,
             "sequence": run_sequence,
             "production_modified": False,
+            "arm_label": args.arm_label,
+            "counterbalance_round": args.counterbalance_round,
+            "counterbalance_position": args.counterbalance_position,
         },
         "calibration": calibration,
         "live_recovery_samples": [],
@@ -150,9 +161,10 @@ def main() -> int:
 
         profile = item["profile"]
         steps = args.qwen_steps if profile == "qwen-quality" else args.wan_steps
+        arm_label = args.arm_label or args.policy
         workflow = base.configure_workflow(
             workflows[profile], prompt=base.PROFILES[profile]["prompt"],
-            seed=item["seed"], prefix=f"benchmarks/recovery/{args.policy}/{item['label']}",
+            seed=item["seed"], prefix=f"benchmarks/recovery/{arm_label}/{item['label']}",
             steps=steps,
         )
         add_cache_bust(workflow, index + 1)

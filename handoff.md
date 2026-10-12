@@ -419,3 +419,39 @@ Evidence:
 - Comparison / matrix manifest SHA-256:
   `b28d853b9e7c0f103c32609b599a468ea8a04aab9c7d5e2bf785c8ec18b41379`
   and `7770330cc6cfe08da9882203b142be6b14205c5918df43fef2367a303a8e596a`.
+
+## 2026-10-12 — Counterbalanced MPS Recovery Confirmation
+
+Current repo position:
+- Added a reusable AB/BA runner and comparator for adaptive versus fixed
+  10-second MPS recovery. Each of four arms starts a fresh isolated server and
+  records explicit round/position metadata.
+- The real run completed 40 governed workflows: two warm-ups plus four measured
+  Qwen/Wan pairs per arm. All outputs were valid and deterministic, adaptive
+  readiness was 100%, and no thermal sample reached `serious` or `critical`.
+- Pooled adaptive throughput was 30.423 outputs/hour versus 27.977 fixed
+  (1.087x). Adaptive median wait was 4.089 seconds versus 10.032 seconds;
+  adaptive Qwen/Wan p95-to-median ratios were 1.033/1.000.
+- The overall predeclared gate failed. Round-specific adaptive/fixed throughput
+  ratios were 1.145 and 1.029, a 1.113 interaction spread above the 1.10 limit.
+
+Decisions and boundaries:
+- Do not promote adaptive to production from this result. It is the stronger
+  experimental candidate, but the order-independence criterion was not met.
+- Do not widen the acceptance threshold post hoc. A next experiment should use
+  additional randomized or repeated blocks to estimate time/order interaction.
+- Thermal state is system-wide public Apple pressure (`nominal`, `fair`,
+  `serious`, `critical`), not GPU Celsius. Later arms recorded `fair`, but never
+  crossed the performance-impact boundary.
+- Experimental port 8288 was stopped automatically. Production startup paths
+  and ports were not modified. The read-only dashboard remains on 8090.
+
+Evidence (ignored local reports):
+- Comparison / manifest SHA-256:
+  `8e5b24c5d96679d7c0edb1555f0328a11e6df446dd94eff3553bbc26bd9fad2c`,
+  `bf3d15dffa88909a3ac89a3b021ea29bc10388d0bf136cd35b0a40fd59c08a48`.
+- Round 1 fixed/adaptive and round 2 adaptive/fixed SHA-256:
+  `be6e0baf568e92551d4c29ae44621565b6fc0e75085793ba3c4624c14ade4235`,
+  `fcc94e5b8579dcc3842a7fb2ef391b290e107244dfb6ef54c72d4216a78892bd`,
+  `e291ee0c3ab67af97993c4f6ae47253fc2cea78c9f186b8111038814bb61ee6b`,
+  `e131bab8f6e441a78d3c1070587fbb1f4375a54cde79870a4f9a2929a6686d40`.

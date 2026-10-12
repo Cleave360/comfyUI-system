@@ -625,6 +625,33 @@ system thermal pressure, not a GPU-only thermometer. Apple provides no supported
 GPU junction-temperature or fixed throttle-temperature API, so the report and
 GUI leave both Celsius fields explicitly unavailable instead of guessing.
 
+To confirm the close adaptive-versus-fixed-10s result without the original arm
+order, run the predeclared AB/BA experiment:
+
+```bash
+.venv/bin/python scripts/run_counterbalanced_recovery.py \
+  --pairs 4 --qwen-steps 20 --wan-steps 4 --port 8288
+```
+
+Round one runs fixed 10 seconds then adaptive; round two reverses the order.
+Every arm gets a fresh server and the same seeds. The aggregate comparison
+requires valid deterministic outputs, no serious/critical thermal sample,
+100% adaptive readiness, adaptive throughput within 2% of fixed 10 seconds,
+a shorter adaptive wait, adaptive per-workload p95/median at most 1.35, and no
+more than 1.10x spread between the two round-specific throughput ratios.
+
+The 2026-10-12 confirmation completed all 40 workflows, but did **not** pass
+the complete promotion gate. Pooled adaptive throughput was 30.423
+outputs/hour versus 27.977 for fixed 10 seconds (1.087x), and its median wait
+fell from 10.032 to 4.089 seconds. All outputs were valid and deterministic,
+adaptive readiness was 100%, adaptive Qwen and Wan p95/median were 1.033 and
+1.000, and no sample reached Apple's `serious` or `critical` thermal state.
+The round-specific throughput ratios were 1.145 and 1.029, however, giving a
+1.113 order-interaction spread against the predeclared 1.10 maximum. Keep
+adaptive experimental: the result supports its throughput and wait-time value,
+but not an order-independent production promotion. The next confirmation
+should use more randomized/repeated blocks rather than changing this gate.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 from scripts.gpu_metrics_gui import DashboardState, ROOT, normalize_report
 
@@ -104,3 +106,80 @@ def test_matrix_uses_fresh_server_and_predeclared_screening_order():
     assert '("adaptive", "adaptive", 0.0)' in source
     assert '"fresh_server_per_policy": True' in source
     assert '"order_is_a_screening_confound": True' in source
+
+
+def test_counterbalance_runner_predeclares_ab_ba_fresh_server_design():
+    source = (ROOT / "scripts" / "run_counterbalanced_recovery.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(source)
+    assert '("round1-fixed10", 1, 1, "fixed", 10.0)' in source
+    assert '("round1-adaptive", 1, 2, "adaptive", 0.0)' in source
+    assert '("round2-adaptive", 2, 1, "adaptive", 0.0)' in source
+    assert '("round2-fixed10", 2, 2, "fixed", 10.0)' in source
+    assert '"design": "AB/BA"' in source
+    assert '"fresh_server_per_arm": True' in source
+
+
+def test_counterbalance_comparison_has_noninferiority_order_and_thermal_gates():
+    source = (ROOT / "scripts" / "compare_counterbalanced_recovery.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(source)
+    assert '"adaptive_throughput_noninferiority_margin": 0.02' in source
+    assert '"order_interaction_ratio_spread_max": 1.10' in source
+    assert '"no_serious_or_critical_thermal_state"' in source
+    assert '"adaptive_wait_shorter_than_fixed_10s"' in source
+
+
+def test_counterbalance_comparison_executes_on_valid_ab_ba_reports(tmp_path):
+    arms = {
+        "round1-fixed10": (1, 1, "fixed", 10.0, 30.0),
+        "round1-adaptive": (1, 2, "adaptive", 0.0, 30.2),
+        "round2-adaptive": (2, 1, "adaptive", 0.0, 30.1),
+        "round2-fixed10": (2, 2, "fixed", 10.0, 30.0),
+    }
+    paths = {}
+    for arm, (round_number, position, policy, cooldown, throughput) in arms.items():
+        path = tmp_path / f"{arm}.json"
+        runs = [
+            {"profile": "qwen-quality", "total_seconds": 100, "status": "success"},
+            {"profile": "wan-native-video", "total_seconds": 40, "status": "success"},
+            {"profile": "qwen-quality", "total_seconds": 100, "status": "success"},
+            {"profile": "wan-native-video", "total_seconds": 40, "status": "success"},
+        ]
+        wait = 4.0 if policy == "adaptive" else 10.0
+        events = [
+            {"wait_seconds": wait, "ready": True, "samples": [{"thermal_state": "nominal"}]}
+            for _ in range(3)
+        ]
+        path.write_text(json.dumps({
+            "schema_version": "kindred.comfyui.mps_recovery_policy.v1",
+            "status": {"completed": True},
+            "method": {
+                "arm_label": arm,
+                "counterbalance_round": round_number,
+                "counterbalance_position": position,
+                "policy": policy,
+                "fixed_cooldown_seconds": cooldown,
+            },
+            "runs": runs,
+            "recovery_events": events,
+            "analysis": {
+                "elapsed_seconds": 480,
+                "outputs_per_hour": throughput,
+                "image_deterministic": True,
+                "video_deterministic": True,
+            },
+        }), encoding="utf-8")
+        paths[arm] = path
+    output = tmp_path / "comparison.json"
+    command = [sys.executable, str(ROOT / "scripts" / "compare_counterbalanced_recovery.py")]
+    for arm, path in paths.items():
+        command.extend([f"--{arm}", str(path)])
+    command.extend(["--output", str(output)])
+    completed = subprocess.run(command, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    comparison = json.loads(output.read_text(encoding="utf-8"))
+    assert comparison["overall_pass"] is True
+    assert comparison["gates"]["adaptive_throughput_noninferior_within_2_percent"] is True
