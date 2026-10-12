@@ -757,3 +757,76 @@ Local ignored evidence SHA-256:
 - Isolated soak report: `2218e083201ddcd5b8927b7a003c1619171e4a7fc0dc8a9c334f80375d6b7862`
 - Qwen worker ledger: `0db362536f0e8139b0e4e491f3ad7699dd0afce899a2d9c896c97105b37905ad`
 - Wan worker ledger: `4875de150561795a0927f77b7438c2183cef01de80f8daeeeb8a7042a72c4b3b`
+
+### Recovery-aware dispatch experiment
+
+The next experiment replaces a guessed inter-workflow delay with an observable
+MPS readiness signal. It keeps Qwen diffusion and the accepted experimental MLX
+Wan VAE path unchanged, then measures a small deterministic MPS matrix multiply
+between full workflows. The readiness threshold is derived from the median and
+median absolute deviation of nine calibration samples. Adaptive dispatch needs
+three consecutive samples at or below that threshold and records a timeout
+rather than silently treating it as recovered.
+
+The predeclared screen has four policies: fixed 2 seconds, adaptive readiness,
+fixed 30 seconds, and fixed 10 seconds. Each policy starts from a fresh server,
+uses the same two warm-ups and four fixed-seed Qwen/Wan pairs, and records
+pixel hashes, per-run latency, recovery samples, allocator counters, available
+unified memory, and outputs/hour. Fixed policies also execute the probe during
+their waiting windows, keeping measurement overhead present in every arm.
+
+The pass criteria require valid deterministic outputs, a 100% adaptive-ready
+fraction, adaptive throughput no worse than the fixed 2-second policy, and a
+per-workload adaptive p95/median no greater than 1.35. This first sweep is a
+screening experiment: its fixed policy order is an admitted confound, and any
+positive result requires a counterbalanced repeat. A probe threshold indicates
+observed shared-device responsiveness only; it is not proof of temperature,
+power state, allocator health, or GPU-wide quiescence.
+
+The localhost metrics dashboard reads only allow-listed fields from supported
+reports. It provides a live visual trace of workflow duration, probe latency,
+available unified memory, recovery waits, and throughput without changing the
+ComfyUI execution path or exposing raw process arguments.
+
+#### First four-policy screening result
+
+The fixed-order screen completed 40 governed full workflows: two warm-ups and
+four measured Qwen/Wan pairs per policy. All outputs were valid and decoded
+pixel hashes were deterministic within each workload and arm.
+
+| Policy | Median wait | Outputs/hour | Qwen median | Qwen p95/median | Wan median | Wan p95/median |
+|---|---:|---:|---:|---:|---:|---:|
+| Fixed 2 s | 2.032 s | 27.121 | 165.618 s | **1.443 fail** | 81.274 s | 1.262 |
+| Adaptive | 4.091 s | 30.582 | 153.548 s | **1.033** | 74.253 s | **1.001** |
+| Fixed 30 s | 30.031 s | 29.348 | 130.613 s | 1.000 | 62.273 s | 1.001 |
+| Fixed 10 s | 10.032 s | **30.763** | 147.722 s | 1.007 | 70.338 s | 1.001 |
+
+Adaptive passed every predeclared gate and delivered 1.128x the throughput of
+fixed 2 seconds. It did not win the exploratory ranking: fixed 10 seconds was
+0.59% faster in outputs/hour, well inside the uncertainty of four pairs. Fixed
+30 seconds had the fastest, flattest render times but its 240.267 seconds of
+measured recovery waiting reduced aggregate throughput. Per-arm idle probe
+medians ranged from 21.733 to 24.286 ms and thresholds from 27.166 to 31.905 ms,
+supporting per-process calibration rather than a hard-coded latency cutoff.
+
+This result supports a counterbalanced adaptive-versus-10-second confirmation.
+It does not show that the MPS probe caused recovery, that thermals caused the
+original stalls, or that adaptive is ready for production. The fixed order may
+confound later arms with machine-state evolution, and four samples per workload
+make tail estimates screening-level evidence only.
+
+The next report revision adds Apple's public `ProcessInfo.thermalState` and Low
+Power Mode state to every recovery sample. `serious` is recorded as the point
+where thermal countermeasures may affect system performance; `critical` means
+performance is significantly impacted. The signal is system-wide and was not
+captured in this completed screen. No Celsius or fixed GPU throttling threshold
+is recorded because Apple exposes no supported public value for either.
+
+Local ignored evidence SHA-256:
+
+- Adaptive: `26839703dc8485d331d8f58eaea2c11f8c670720e7e838494fa6b9568aa2fffb`
+- Fixed 2 seconds: `82b96d0cbbc1ffce971f2927b2f4454cbde795c64d50a54ddf3b96bfeb78dddc`
+- Fixed 10 seconds: `781fb4140470b9f234f4e46e80af10069046291a8c68fddcdc0da9f964e7030e`
+- Fixed 30 seconds: `e9a3881eaeaa71ee4bb9158e093331f9810b5cd4fa2601806c922d69a95589b0`
+- Comparison: `b28d853b9e7c0f103c32609b599a468ea8a04aab9c7d5e2bf785c8ec18b41379`
+- Matrix manifest: `7770330cc6cfe08da9882203b142be6b14205c5918df43fef2367a303a8e596a`

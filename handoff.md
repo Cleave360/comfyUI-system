@@ -381,3 +381,41 @@ Evidence:
   `2218e083201ddcd5b8927b7a003c1619171e4a7fc0dc8a9c334f80375d6b7862`,
   `0db362536f0e8139b0e4e491f3ad7699dd0afce899a2d9c896c97105b37905ad`,
   and `4875de150561795a0927f77b7438c2183cef01de80f8daeeeb8a7042a72c4b3b`.
+
+## 2026-10-12 — MPS Recovery Policy Screen and Metrics GUI
+
+Current repo position:
+- A read-only loopback GPU metrics dashboard now visualizes per-run workflow
+  duration, MPS probe latency, unified-memory availability, recovery waits,
+  outputs/hour, and Apple public thermal-pressure state. Historical reports
+  correctly show thermal state as unavailable because it was not captured.
+- A governed recovery harness ran four fresh-server arms with two warm-ups and
+  four measured Qwen/Wan pairs each: fixed 2 seconds, adaptive, fixed 30
+  seconds, and fixed 10 seconds. All 40 workflows were valid and deterministic.
+- Adaptive passed every predeclared gate: 30.582 outputs/hour, 1.033 Qwen and
+  1.001 Wan p95/median, 100% readiness, and 1.128x fixed-2s throughput.
+- Fixed 10 seconds narrowly ranked first at 30.763 outputs/hour. Fixed 30
+  seconds had the lowest and flattest raw render times but only 29.348
+  outputs/hour after waiting. Fixed 2 seconds failed Qwen stability at 1.443.
+- A real post-run MPS probe verified `ProcessInfo.thermalState=nominal`, Low
+  Power Mode false, and explicit null Celsius/throttle-temperature fields.
+
+Decisions and boundaries:
+- Preserve adaptive as a positive candidate, not a production promotion.
+  Four pairs and fixed policy order are screening evidence only.
+- The next confirmation should counterbalance adaptive and fixed 10 seconds.
+  Their 0.59% throughput difference is too small to call a winner here.
+- Treat `serious` as Apple's public performance-impact boundary and `critical`
+  as significant impact. Do not invent a GPU temperature or throttle cutoff;
+  the public signal is system-wide thermal pressure, not a GPU thermometer.
+- Production services and startup paths remain unchanged.
+
+Evidence:
+- Adaptive / fixed-2 / fixed-10 / fixed-30 SHA-256:
+  `26839703dc8485d331d8f58eaea2c11f8c670720e7e838494fa6b9568aa2fffb`,
+  `82b96d0cbbc1ffce971f2927b2f4454cbde795c64d50a54ddf3b96bfeb78dddc`,
+  `781fb4140470b9f234f4e46e80af10069046291a8c68fddcdc0da9f964e7030e`,
+  and `e9a3881eaeaa71ee4bb9158e093331f9810b5cd4fa2601806c922d69a95589b0`.
+- Comparison / matrix manifest SHA-256:
+  `b28d853b9e7c0f103c32609b599a468ea8a04aab9c7d5e2bf785c8ec18b41379`
+  and `7770330cc6cfe08da9882203b142be6b14205c5918df43fef2367a303a8e596a`.

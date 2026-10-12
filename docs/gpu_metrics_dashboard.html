@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kindred MPS Run Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #091016;
+      --panel: #111c25;
+      --panel-2: #162530;
+      --text: #edf5f7;
+      --muted: #91a7b2;
+      --line: #29404d;
+      --cyan: #4dd6c8;
+      --blue: #6aa9ff;
+      --amber: #f1b95b;
+      --red: #ff7272;
+      --green: #75df9a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top right, #132b35 0, var(--bg) 42%);
+      color: var(--text);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1500px; margin: 0 auto; padding: 28px; }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 22px; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 38px); font-weight: 600; letter-spacing: -0.03em; }
+    h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+    .eyebrow { color: var(--cyan); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 8px; }
+    .subtitle, .muted { color: var(--muted); }
+    .status { display: flex; gap: 10px; align-items: center; color: var(--muted); white-space: nowrap; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 16px var(--green); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 18px; }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+    select, button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--panel);
+      padding: 0 12px;
+      font: inherit;
+    }
+    button { cursor: pointer; }
+    button:hover, select:focus, button:focus { border-color: var(--cyan); outline: none; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .metric, .panel {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .metric { padding: 16px; min-height: 105px; }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { margin-top: 10px; font-size: 26px; font-variant-numeric: tabular-nums; }
+    .metric .detail { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 12px; }
+    .panel { padding: 16px; min-width: 0; }
+    .wide { grid-column: 1 / -1; }
+    svg { width: 100%; height: 280px; display: block; overflow: visible; }
+    .axis, .gridline { stroke: var(--line); stroke-width: 1; }
+    .axis-label { fill: var(--muted); font-size: 11px; }
+    .bar-image { fill: var(--blue); }
+    .bar-video { fill: var(--cyan); }
+    .probe-line { fill: none; stroke: var(--amber); stroke-width: 2; }
+    .threshold { stroke: var(--red); stroke-dasharray: 5 5; }
+    .probe-dot { fill: var(--amber); }
+    .probe-dot.ready { fill: var(--green); }
+    .memory-line { fill: none; stroke: var(--blue); stroke-width: 2; }
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; }
+    th { color: var(--muted); font-weight: 500; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+    .empty { min-height: 180px; display: grid; place-items: center; color: var(--muted); text-align: center; }
+    .empty[hidden] { display: none; }
+    @media (max-width: 900px) {
+      main { padding: 18px; }
+      header { align-items: start; flex-direction: column; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+    }
+    @media (max-width: 520px) { .metrics { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">Kindred experimental telemetry</div>
+      <h1>MPS Run Monitor</h1>
+      <div class="subtitle">Workflow latency, recovery probes and unified-memory movement by run.</div>
+    </div>
+    <div class="status"><span class="dot" id="live-dot"></span><span id="refresh-state">Connecting</span></div>
+  </header>
+  <div class="toolbar">
+    <label>Evidence report<select id="report-select" aria-label="Evidence report"></select></label>
+    <button id="refresh" type="button">Refresh now</button>
+    <span class="muted" id="report-path"></span>
+  </div>
+  <section class="metrics" aria-label="Current metrics">
+    <div class="metric"><div class="label">State</div><div class="value" id="state-value">—</div><div class="detail" id="state-detail">—</div></div>
+    <div class="metric"><div class="label">Latest run</div><div class="value" id="latest-value">—</div><div class="detail" id="latest-detail">—</div></div>
+    <div class="metric"><div class="label">Measured throughput</div><div class="value" id="throughput-value">—</div><div class="detail">outputs per hour</div></div>
+    <div class="metric"><div class="label">Probe / ready threshold</div><div class="value" id="probe-value">—</div><div class="detail" id="probe-detail">—</div></div>
+    <div class="metric"><div class="label">Thermal pressure</div><div class="value" id="thermal-value">—</div><div class="detail" id="thermal-detail">impact boundary: serious</div></div>
+  </section>
+  <section class="grid">
+    <article class="panel">
+      <h2>Workflow duration</h2>
+      <div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Qwen image</span><span><i class="swatch" style="background:var(--cyan)"></i>Wan video</span></div>
+      <svg id="duration-chart" role="img" aria-label="Workflow duration by run"></svg>
+    </article>
+    <article class="panel">
+      <h2>Recovery probe latency</h2>
+      <div class="legend"><span><i class="swatch" style="background:var(--amber)"></i>Probe</span><span><i class="swatch" style="background:var(--red)"></i>Ready threshold</span></div>
+      <svg id="probe-chart" role="img" aria-label="MPS recovery probe latency"></svg>
+    </article>
+    <article class="panel wide">
+      <h2>Available unified memory during workflows</h2>
+      <svg id="memory-chart" role="img" aria-label="Available unified memory over sampled workflow time"></svg>
+    </article>
+    <article class="panel wide">
+      <h2>Run ledger</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Run</th><th>Workload</th><th>Status</th><th>Thermal before</th><th class="num">Duration</th><th class="num">Recovery before</th><th class="num">Lowest free memory</th></tr></thead>
+          <tbody id="run-table"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty-state" hidden>No compatible benchmark reports are available yet.</div>
+    </article>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let reports = [];
+  let selectedId = localStorage.getItem('kindred-mps-report') || '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const fmt = (value, digits = 1) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
+  const create = (name, attrs = {}) => {
+    const node = document.createElementNS(ns, name);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    return node;
+  };
+  function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+  function axisText(svg, x, y, text, anchor = 'middle') {
+    const node = create('text', {x, y, class: 'axis-label', 'text-anchor': anchor});
+    node.textContent = text; svg.appendChild(node);
+  }
+  function frame(svg, width, height, margin) {
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.appendChild(create('line', {x1: margin.left, y1: height-margin.bottom, x2: width-margin.right, y2: height-margin.bottom, class:'axis'}));
+    svg.appendChild(create('line', {x1: margin.left, y1: margin.top, x2: margin.left, y2: height-margin.bottom, class:'axis'}));
+  }
+  function durationChart(report) {
+    const svg = $('duration-chart'); clear(svg);
+    const data = report.runs || []; const w = 760, h = 280, m = {top:10,right:12,bottom:52,left:58}; frame(svg,w,h,m);
+    if (!data.length) return;
+    const max = Math.max(...data.map(d => Number(d.total_seconds)||0), 1);
+    const gap = 5, bw = Math.max(5, (w-m.left-m.right)/data.length-gap);
+    data.forEach((d,i) => {
+      const value=Number(d.total_seconds)||0, bh=(h-m.top-m.bottom)*value/max;
+      const x=m.left+i*((w-m.left-m.right)/data.length)+gap/2, y=h-m.bottom-bh;
+      const rect=create('rect',{x,y,width:bw,height:bh,rx:3,class:d.profile==='qwen-quality'?'bar-image':'bar-video'});
+      rect.appendChild(create('title')); rect.firstChild.textContent=`${d.label}: ${fmt(value)} seconds`; svg.appendChild(rect);
+      axisText(svg,x+bw/2,h-m.bottom+18,d.label.replace('warmup_','w-').replace('image_','i').replace('video_','v'));
+    });
+    [0,.5,1].forEach(t=>{const y=h-m.bottom-(h-m.top-m.bottom)*t; svg.appendChild(create('line',{x1:m.left,y1:y,x2:w-m.right,y2:y,class:'gridline'})); axisText(svg,m.left-8,y+4,fmt(max*t,0),'end');});
+    axisText(svg,m.left,m.top-1,'seconds','start');
+  }
+  function probeChart(report) {
+    const svg=$('probe-chart'); clear(svg); const w=620,h=280,m={top:10,right:14,bottom:42,left:58}; frame(svg,w,h,m);
+    const samples=[]; let offset=0;
+    (report.recovery_events||[]).forEach(event=>{(event.samples||[]).forEach(s=>samples.push({...s,x:offset+(Number(s.wait_elapsed_seconds)||0)})); offset+=Number(event.wait_seconds)||0;});
+    (report.live_recovery_samples||[]).forEach(s=>samples.push({...s,x:offset+(Number(s.wait_elapsed_seconds)||0)}));
+    if(!samples.length) return;
+    const threshold=Number(report.calibration?.threshold_ms)||0, maxX=Math.max(...samples.map(d=>d.x),1), maxY=Math.max(...samples.map(d=>Number(d.latency_ms)||0),threshold,1)*1.08;
+    const sx=x=>m.left+(w-m.left-m.right)*x/maxX, sy=y=>h-m.bottom-(h-m.top-m.bottom)*y/maxY;
+    const path=samples.map((d,i)=>`${i?'L':'M'}${sx(d.x)},${sy(Number(d.latency_ms)||0)}`).join(' '); svg.appendChild(create('path',{d:path,class:'probe-line'}));
+    if(threshold){svg.appendChild(create('line',{x1:m.left,y1:sy(threshold),x2:w-m.right,y2:sy(threshold),class:'threshold'})); axisText(svg,w-m.right,sy(threshold)-6,`${fmt(threshold,2)} ms`,'end');}
+    samples.forEach(d=>{const c=create('circle',{cx:sx(d.x),cy:sy(Number(d.latency_ms)||0),r:4,class:`probe-dot${d.ready?' ready':''}`}); c.appendChild(create('title')); c.firstChild.textContent=`${fmt(d.latency_ms,2)} ms at ${fmt(d.x)} s`; svg.appendChild(c);});
+    [0,.5,1].forEach(t=>{axisText(svg,sx(maxX*t),h-m.bottom+18,fmt(maxX*t,0)); axisText(svg,m.left-8,sy(maxY*t)+4,fmt(maxY*t,1),'end');}); axisText(svg,(m.left+w-m.right)/2,h-5,'cumulative recovery wait (s)');
+  }
+  function memoryChart(report) {
+    const svg=$('memory-chart'); clear(svg); const w=1240,h=260,m={top:10,right:18,bottom:42,left:64}; frame(svg,w,h,m);
+    const points=[]; let offset=0;
+    (report.runs||[]).forEach(run=>{const samples=run.memory||[]; samples.forEach(s=>{if(Number.isFinite(Number(s.system_free_gib))) points.push({x:offset+(Number(s.elapsed_seconds)||0),y:Number(s.system_free_gib),label:run.label});}); offset+=Number(run.total_seconds)||0;});
+    if(!points.length) return;
+    const minY=Math.min(...points.map(d=>d.y)), maxY=Math.max(...points.map(d=>d.y)), pad=Math.max((maxY-minY)*.15,1), lo=Math.max(0,minY-pad), hi=maxY+pad, maxX=Math.max(...points.map(d=>d.x),1);
+    const sx=x=>m.left+(w-m.left-m.right)*x/maxX, sy=y=>h-m.bottom-(h-m.top-m.bottom)*(y-lo)/(hi-lo);
+    svg.appendChild(create('path',{d:points.map((d,i)=>`${i?'L':'M'}${sx(d.x)},${sy(d.y)}`).join(' '),class:'memory-line'}));
+    [0,.5,1].forEach(t=>{axisText(svg,sx(maxX*t),h-m.bottom+18,fmt(maxX*t/60,1)); axisText(svg,m.left-8,sy(lo+(hi-lo)*t)+4,fmt(lo+(hi-lo)*t,1),'end');}); axisText(svg,(m.left+w-m.right)/2,h-5,'cumulative workflow time (minutes)'); axisText(svg,m.left,m.top-1,'free GiB','start');
+  }
+  function render(report) {
+    if(!report){$('empty-state').hidden=false; return;} $('empty-state').hidden=true; $('report-path').textContent=report.path;
+    const status=report.status||{}, latest=(report.runs||[]).at(-1), analysis=report.analysis||{}, live=(report.live_recovery_samples||[]).at(-1);
+    const completed=status.completed===true; $('state-value').textContent=completed?'Complete':(status.phase||'Live').replaceAll('_',' '); $('state-detail').textContent=report.policy;
+    $('latest-value').textContent=latest?`${fmt(latest.total_seconds)}s`:'—'; $('latest-detail').textContent=latest?`${latest.label} · ${latest.profile}`:'waiting for first run';
+    $('throughput-value').textContent=fmt(analysis.outputs_per_hour,2);
+    const lastProbe=live || (report.recovery_events||[]).flatMap(e=>e.samples||[]).at(-1); $('probe-value').textContent=lastProbe?`${fmt(lastProbe.latency_ms,2)} ms`:'—'; $('probe-detail').textContent=report.calibration?.threshold_ms?`ready ≤ ${fmt(report.calibration.threshold_ms,2)} ms`:'no calibrated probe';
+    const thermal=lastProbe?.thermal_state || 'unavailable'; $('thermal-value').textContent=thermal; $('thermal-detail').textContent=thermal==='serious'?'countermeasures may affect performance':thermal==='critical'?'performance significantly impacted':lastProbe?.low_power_mode?'low power mode active · boundary: serious':'impact boundary: serious · no public GPU °C cutoff';
+    durationChart(report); probeChart(report); memoryChart(report);
+    const events=new Map((report.recovery_events||[]).map(e=>[e.before_label,e])); const tbody=$('run-table'); tbody.textContent='';
+    (report.runs||[]).forEach(run=>{const free=(run.memory||[]).map(x=>Number(x.system_free_gib)).filter(Number.isFinite); const event=events.get(run.label), beforeThermal=(event?.samples||[]).at(-1)?.thermal_state||'—'; const cells=[run.label,run.profile,run.status||'—',beforeThermal,`${fmt(run.total_seconds)} s`,event?`${fmt(event.wait_seconds)} s`:'—',free.length?`${fmt(Math.min(...free),1)} GiB`:'—']; const tr=document.createElement('tr'); cells.forEach((v,i)=>{const td=document.createElement('td'); td.textContent=v; if(i>=4)td.className='num'; if(i===2){const span=document.createElement('span');span.className='pill';span.textContent=v;td.textContent='';td.appendChild(span);} tr.appendChild(td);}); tbody.appendChild(tr);});
+  }
+  async function refresh() {
+    try { const response=await fetch('/api/data',{cache:'no-store'}); if(!response.ok)throw new Error(`HTTP ${response.status}`); const data=await response.json(); reports=data.reports||[]; const select=$('report-select'); const current=selectedId || reports[0]?.id || ''; select.textContent=''; reports.forEach(r=>{const option=document.createElement('option'); option.value=r.id; option.textContent=`${r.policy} · ${r.created_at?.replace('T',' ').slice(0,19)||r.id}`; select.appendChild(option);}); selectedId=reports.some(r=>r.id===current)?current:(reports[0]?.id||''); select.value=selectedId; render(reports.find(r=>r.id===selectedId)); $('refresh-state').textContent=`Live · ${new Date().toLocaleTimeString()}`; $('live-dot').style.background='var(--green)'; }
+    catch(error){$('refresh-state').textContent=`Disconnected · ${error.message}`; $('live-dot').style.background='var(--red)';}
+  }
+  $('report-select').addEventListener('change',e=>{selectedId=e.target.value;localStorage.setItem('kindred-mps-report',selectedId);render(reports.find(r=>r.id===selectedId));});
+  $('refresh').addEventListener('click',refresh); refresh(); setInterval(refresh,2000);
+</script>
+</body>
+</html>

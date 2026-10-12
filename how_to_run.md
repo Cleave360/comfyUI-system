@@ -570,6 +570,61 @@ Wan total p95/median was 1.401, and Qwen Torch driver allocation grew by
 runs stabilized near 134 seconds. Stop both experimental ports after capture;
 production ports 8188, 8075, and 8070 are not part of this experiment.
 
+### Live GPU experiment dashboard and recovery policy
+
+The read-only dashboard displays workflow duration, probe latency, available
+unified memory, recovery waits, current run state, and measured outputs/hour.
+It binds only to loopback, scans supported JSON reports every two seconds, and
+does not expose process arguments or arbitrary report fields:
+
+```bash
+.venv/bin/python scripts/gpu_metrics_gui.py \
+  --listen 127.0.0.1 --port 8090 \
+  --report-dir reports/benchmarks
+```
+
+Open `http://127.0.0.1:8090`. A single report can be selected with repeated
+`--report` arguments instead of directory discovery.
+
+The recovery-policy screen compares fixed 2, 10, and 30-second gaps against an
+adaptive MPS readiness gate. Each policy gets a fresh isolated Torch 2.12/MLX
+server on port 8288. After two warm-ups it measures four identical Qwen/Wan
+pairs. A retained 4096x4096 FP16 matrix multiplication is sampled every two
+seconds; the adaptive policy requires three consecutive samples below a robust
+idle threshold before dispatch. Fixed policies run the same probe so probe
+overhead is comparable, but never let it shorten their configured delay.
+
+Set `ADAPTIVE_BASE` and `ADAPTIVE_API_KEY` in the ignored root `.env`, start
+the dashboard, then run:
+
+```bash
+.venv/bin/python scripts/run_recovery_policy_matrix.py \
+  --pairs 4 --qwen-steps 20 --wan-steps 4 --port 8288
+```
+
+Reports are written incrementally beneath `reports/benchmarks/`. The matrix
+runner records failures and always stops its owned server between policies.
+The initial order is a screening design and is explicitly recorded as an order
+confound. A passing adaptive result must be repeated in a counterbalanced order
+before promotion. This experiment does not change the production server.
+
+The first four-policy screen completed all 40 governed workflows. Adaptive
+passed every predeclared gate at 30.582 outputs/hour, 1.033 Qwen p95/median,
+1.001 Wan p95/median, and a 4.091-second median recovery wait. Fixed 10 seconds
+ranked fractionally higher at 30.763 outputs/hour; fixed 30 seconds produced the
+lowest raw render times but only 29.348 outputs/hour after its waits. Fixed 2
+seconds was unstable at 27.121 outputs/hour and 1.443 Qwen p95/median. Treat
+this as positive screening evidence for recovery-aware dispatch, not promotion
+proof, because each arm had only four measured pairs and policy order was not
+counterbalanced.
+
+New reports also record Apple's public `ProcessInfo.thermalState` as nominal,
+fair, serious, or critical, plus Low Power Mode. The dashboard treats serious
+as the performance-impact boundary and critical as significant impact. This is
+system thermal pressure, not a GPU-only thermometer. Apple provides no supported
+GPU junction-temperature or fixed throttle-temperature API, so the report and
+GUI leave both Celsius fields explicitly unavailable instead of guessing.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

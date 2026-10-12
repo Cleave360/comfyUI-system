@@ -35,6 +35,7 @@ __pycache__/
 
 # Logs, runtime state, and caches
 *.log
+screenlog.*
 logs/
 **/logs/
 temp/
