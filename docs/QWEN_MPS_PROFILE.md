@@ -890,6 +890,48 @@ orders and between time halves must each be at most 1.10. Passing would support
 an opt-in recovery-policy canary; it would not prove a thermal mechanism or
 authorize replacing the production runtime without operational observation.
 
+#### Balanced randomized-block result
+
+The seeded run completed all twelve fresh-server arms: 72 governed workflows,
+including 48 measured outputs. Every output was valid and deterministic,
+adaptive readiness was 100%, and all recorded thermal samples were `fair`;
+none crossed the `serious` performance-impact boundary.
+
+| Policy | Measured outputs | Median wait | Outputs/hour | Qwen p95/median | Wan p95/median |
+|---|---:|---:|---:|---:|---:|
+| Adaptive | 24 | **4.092 s** | **27.336** | **1.053** | **1.025** |
+| Fixed 10 s | 24 | 10.032 s | 25.886 | 1.796 | 1.290 |
+
+Adaptive improved pooled throughput by 5.60%, removed 134.400 seconds of
+recovery waiting, and produced materially flatter tails. The six paired block
+ratios were 1.304, 1.069, 1.008, 1.010, 1.025, and 0.931; their geometric mean
+was 1.052 and median was 1.018. Block 1 contained fixed-policy excursions of
+303.125 seconds for Qwen and 102.339 seconds for Wan. Block 6 reversed the
+direction: adaptive ran in a slower local state and fixed won by 6.91%.
+
+The frozen comparison is **overall fail**. Adaptive remained non-inferior
+within 2% in both order strata and both chronological halves, but the
+interaction limits failed:
+
+- fixed-first versus adaptive-first geometric means: 1.126 versus 0.982,
+  giving a 1.147 spread against the 1.10 maximum;
+- blocks 1-3 versus blocks 4-6 geometric means: 1.120 versus 0.988, giving a
+  1.134 spread against the 1.10 maximum.
+
+This strengthens the evidence that adaptive recovery yields shorter waits and
+stable tails, but it does not establish a stationary throughput advantage.
+Fresh-process order and shared-device time state remain material. Do not widen
+the gates or enable adaptive in production from this result. A safer next step
+is counterfactual shadow collection: retain the fixed production dispatch while
+recording when the adaptive probe would have released each job, so a longer
+operational trace can be evaluated without changing user-visible scheduling.
+
+Local ignored evidence SHA-256:
+
+- Comparison: `b5c3dbeea550580e227c47fb870d5790be39e52b9c0ed0a704ca8b5c2bbc5c81`
+- Manifest: `3d9fba3beed637a9d9e4d68ec8f3d279b2259c250f78940d9ae312fd1ee14dfa`
+- Ordered twelve-arm checksum bundle: `e174fab9d1bf41b83aeaafaddf2f4145b0a08c33d304c44cc0c1f7f387ecced6`
+
 Local ignored evidence SHA-256:
 
 - Comparison: `8e5b24c5d96679d7c0edb1555f0328a11e6df446dd94eff3553bbc26bd9fad2c`

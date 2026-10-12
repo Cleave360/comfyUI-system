@@ -668,6 +668,19 @@ both chronological halves. Order-stratum and time-half geometric-mean ratio
 spreads must each be at most 1.10. The runner preserves a failed comparison as
 evidence and always stops its owned experimental server.
 
+The seeded 2026-10-12 run completed all 72 workflows and all 48 measured
+outputs were valid and deterministic. Adaptive pooled 27.336 outputs/hour
+versus 25.886 for fixed 10 seconds (1.056x), while median recovery wait fell
+from 10.032 to 4.092 seconds. Adaptive Qwen and Wan p95/median were 1.053 and
+1.025, readiness was 100%, and no sample reached `serious` or `critical`.
+
+The overall gate nevertheless failed. Adaptive/fixed block ratios ranged from
+0.931 to 1.304. Fixed-first and adaptive-first geometric means were 1.126 and
+0.982, producing a 1.147 order spread; first-half and second-half means were
+1.120 and 0.988, producing a 1.134 temporal spread. Both exceeded 1.10. Keep
+adaptive experimental: it showed better pooled throughput, shorter waits, and
+flatter tails, but not an order- and time-independent advantage.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:

@@ -455,3 +455,36 @@ Evidence (ignored local reports):
   `fcc94e5b8579dcc3842a7fb2ef391b290e107244dfb6ef54c72d4216a78892bd`,
   `e291ee0c3ab67af97993c4f6ae47253fc2cea78c9f186b8111038814bb61ee6b`,
   `e131bab8f6e441a78d3c1070587fbb1f4375a54cde79870a4f9a2929a6686d40`.
+
+## 2026-10-12 — Balanced Randomized Recovery Blocks
+
+Current repo position:
+- Commit `765250f` froze a six-block balanced randomized design before data
+  collection. Seed 20261012 produced three fixed-first and three adaptive-first
+  blocks, with a fresh isolated server, two warm-ups, and two measured Qwen/Wan
+  pairs per arm.
+- All 12 arms and 72 workflows completed. The 48 measured outputs were valid
+  and deterministic; adaptive readiness was 100%; thermal state remained
+  `fair` without a `serious` or `critical` sample.
+- Adaptive pooled 27.336 outputs/hour versus fixed 25.886 (1.056x), with a
+  4.092-second versus 10.032-second median wait. Adaptive Qwen/Wan p95-to-median
+  ratios were 1.053/1.025 versus fixed 1.796/1.290.
+- The overall gate failed: order interaction was 1.147 and chronological-half
+  interaction was 1.134, both above the predeclared 1.10 maximum.
+
+Decisions and boundaries:
+- Adaptive remains experimental. Pooled throughput, wait, and tail evidence is
+  positive, but the benefit is not independent of order or shared-device time.
+- Preserve the fail and do not relax either interaction gate after observation.
+- Prefer counterfactual shadow measurement next: keep fixed dispatch behavior
+  while recording the adaptive release decision over a longer operational
+  trace. This gathers evidence without changing user-visible scheduling.
+- Production ports and runtime were not modified. Experimental port 8288 was
+  stopped automatically; the read-only dashboard remains on 8090.
+
+Evidence (ignored local reports):
+- Comparison / manifest SHA-256:
+  `b5c3dbeea550580e227c47fb870d5790be39e52b9c0ed0a704ca8b5c2bbc5c81`,
+  `3d9fba3beed637a9d9e4d68ec8f3d279b2259c250f78940d9ae312fd1ee14dfa`.
+- Ordered twelve-arm checksum bundle SHA-256:
+  `e174fab9d1bf41b83aeaafaddf2f4145b0a08c33d304c44cc0c1f7f387ecced6`.
