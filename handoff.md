@@ -488,3 +488,15 @@ Evidence (ignored local reports):
   `3d9fba3beed637a9d9e4d68ec8f3d279b2259c250f78940d9ae312fd1ee14dfa`.
 - Ordered twelve-arm checksum bundle SHA-256:
   `e174fab9d1bf41b83aeaafaddf2f4145b0a08c33d304c44cc0c1f7f387ecced6`.
+
+Shadow follow-up:
+- Added a read-only analyzer that replays the adaptive consecutive-sample rule
+  against fixed-policy telemetry without modifying dispatch.
+- All 24 measured fixed waits resolved; median shadow release was 4.066 seconds.
+  Twenty-three resolved by 4.084 seconds, while one block-5 event required
+  10.004 seconds. Estimated potential wait saving was 137.223 seconds.
+- This proves the recorded decision is usually early but not a hard-coded
+  four-second delay. It does not prove earlier dispatch would preserve the
+  observed next-run timing because those runs followed the full fixed wait.
+- Shadow report SHA-256:
+  `2e0f760a2c3c35fcb1939d3f08557ff9b4d31a4ccec472e03732b7d8026f7da0`.

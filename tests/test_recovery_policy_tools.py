@@ -280,3 +280,30 @@ def test_randomized_block_comparator_executes_balanced_manifest(tmp_path):
     assert comparison["paired_block_ratios"]["count"] == 6
     assert comparison["gates"]["adaptive_noninferior_in_both_order_strata"] is True
     assert comparison["gates"]["adaptive_noninferior_in_both_time_halves"] is True
+
+
+def test_shadow_replay_requires_three_consecutive_ready_samples():
+    from scripts.analyze_recovery_shadow import shadow_release
+
+    samples = [
+        {"latency_ms": 20, "wait_elapsed_seconds": 0},
+        {"latency_ms": 40, "wait_elapsed_seconds": 2},
+        {"latency_ms": 20, "wait_elapsed_seconds": 4},
+        {"latency_ms": 19, "wait_elapsed_seconds": 6},
+        {"latency_ms": 18, "wait_elapsed_seconds": 8},
+    ]
+    result = shadow_release(samples, threshold_ms=30, consecutive_required=3)
+    assert result["resolved"] is True
+    assert result["sample_index"] == 4
+    assert result["release_seconds"] == 8
+
+
+def test_shadow_analyzer_is_counterfactual_and_does_not_modify_dispatch():
+    source = (ROOT / "scripts" / "analyze_recovery_shadow.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(source)
+    assert '"dispatch_modified": False' in source
+    assert '"counterfactual_only": True' in source
+    assert 'report.get("recovery_events", [])[1:]' in source
+    assert "does not prove what" in source

@@ -932,6 +932,27 @@ Local ignored evidence SHA-256:
 - Manifest: `3d9fba3beed637a9d9e4d68ec8f3d279b2259c250f78940d9ae312fd1ee14dfa`
 - Ordered twelve-arm checksum bundle: `e174fab9d1bf41b83aeaafaddf2f4145b0a08c33d304c44cc0c1f7f387ecced6`
 
+#### Fixed-dispatch shadow replay
+
+The six fixed arms already contain the probe samples needed to replay the
+adaptive decision without changing any dispatch. Across the 24 measured waits,
+all decisions resolved. Median counterfactual release was 4.066 seconds; 23 of
+24 events released by 4.084 seconds. One block-5 transition required 10.004
+seconds to collect three consecutive below-threshold samples. The adaptive
+signal is therefore usually near four seconds in this trace, but is not merely
+a fixed four-second timer.
+
+The replay estimates 137.223 seconds of potentially removable waiting. This is
+decision-timing evidence only: every following workflow was actually executed
+after the complete fixed wait, so its recorded duration cannot establish the
+performance or safety of the earlier counterfactual dispatch. A longer fixed
+operational trace can now be analyzed with the same read-only tool before any
+canary changes user-visible queue behavior.
+
+Local ignored shadow report SHA-256:
+
+- `2e0f760a2c3c35fcb1939d3f08557ff9b4d31a4ccec472e03732b7d8026f7da0`
+
 Local ignored evidence SHA-256:
 
 - Comparison: `8e5b24c5d96679d7c0edb1555f0328a11e6df446dd94eff3553bbc26bd9fad2c`

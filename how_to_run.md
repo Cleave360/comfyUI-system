@@ -681,6 +681,27 @@ The overall gate nevertheless failed. Adaptive/fixed block ratios ranged from
 adaptive experimental: it showed better pooled throughput, shorter waits, and
 flatter tails, but not an order- and time-independent advantage.
 
+Replay the adaptive decision against the fixed arms without changing dispatch:
+
+```bash
+.venv/bin/python scripts/analyze_recovery_shadow.py \
+  --manifest reports/benchmarks/recovery_randomized_blocks_20261012-190124.json \
+  --output reports/benchmarks/recovery_shadow_20261012-190124.json
+```
+
+The shadow report finds the first three consecutive below-threshold samples in
+each measured fixed wait. It estimates decision timing and potential wait saved
+only. The following workflow was actually dispatched after the full fixed wait,
+so its observed duration is not evidence of what an earlier dispatch would have
+done.
+
+The completed replay resolved all 24 measured fixed-policy waits. Median shadow
+release was 4.066 seconds and 23 events released by 4.084 seconds. One block-5
+event did not accumulate three consecutive ready samples until 10.004 seconds,
+showing that the signal is not equivalent to a fixed four-second delay. The
+counterfactual estimated 137.223 seconds of removable waiting, but does not
+claim those earlier dispatches would preserve the observed fixed-run timings.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
