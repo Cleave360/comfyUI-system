@@ -873,6 +873,23 @@ an order-independent policy effect or justify production promotion. A follow-up
 should use additional randomized or repeated blocks and retain these results as
 immutable evidence rather than widening the gate after observation.
 
+#### Balanced randomized-block follow-up design
+
+The next test uses six paired blocks with a recorded seed. Three blocks run
+fixed 10 seconds first and three run adaptive first; the balanced sequence is
+shuffled before execution. Each of the twelve arms starts a fresh server and
+performs two warm-ups followed by two measured Qwen/Wan pairs. This yields six
+paired policy ratios distributed across the run rather than relying on one
+ratio per order.
+
+The existing validity, determinism, readiness, thermal, wait-time, pooled
+non-inferiority, and adaptive p95/median gates remain fixed. The follow-up also
+requires adaptive throughput to be non-inferior within 2% in both order strata
+and in both chronological halves. The geometric-mean ratio spread between
+orders and between time halves must each be at most 1.10. Passing would support
+an opt-in recovery-policy canary; it would not prove a thermal mechanism or
+authorize replacing the production runtime without operational observation.
+
 Local ignored evidence SHA-256:
 
 - Comparison: `8e5b24c5d96679d7c0edb1555f0328a11e6df446dd94eff3553bbc26bd9fad2c`

@@ -183,3 +183,100 @@ def test_counterbalance_comparison_executes_on_valid_ab_ba_reports(tmp_path):
     comparison = json.loads(output.read_text(encoding="utf-8"))
     assert comparison["overall_pass"] is True
     assert comparison["gates"]["adaptive_throughput_noninferior_within_2_percent"] is True
+
+
+def test_randomized_block_runner_is_balanced_seeded_and_fresh_server():
+    source = (ROOT / "scripts" / "run_randomized_recovery_blocks.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(source)
+    assert "DEFAULT_SEED = 20261012" in source
+    assert "BLOCKS = 6" in source
+    assert "PAIRS_PER_ARM = 2" in source
+    assert '["fixed-adaptive"] * 3 + ["adaptive-fixed"] * 3' in source
+    assert '"design": "balanced randomized paired blocks"' in source
+    assert '"fresh_server_per_arm": True' in source
+
+
+def test_randomized_block_comparator_predeclares_stratified_gates():
+    source = (ROOT / "scripts" / "compare_randomized_recovery_blocks.py").read_text(
+        encoding="utf-8",
+    )
+    ast.parse(source)
+    assert '"adaptive_noninferiority_margin": 0.02' in source
+    assert '"adaptive_noninferior_in_both_order_strata"' in source
+    assert '"order_interaction_spread_max_1_10"' in source
+    assert '"adaptive_noninferior_in_both_time_halves"' in source
+    assert '"temporal_interaction_spread_max_1_10"' in source
+    assert '"no_serious_or_critical_thermal_state"' in source
+
+
+def test_randomized_block_comparator_executes_balanced_manifest(tmp_path):
+    schedule = [
+        "fixed-adaptive", "fixed-adaptive", "adaptive-fixed",
+        "adaptive-fixed", "fixed-adaptive", "adaptive-fixed",
+    ]
+    arms = []
+    for block, sequence in enumerate(schedule, start=1):
+        for position, policy in enumerate(sequence.split("-"), start=1):
+            slug = f"block{block}-{policy}"
+            path = tmp_path / f"{slug}.json"
+            wait = 4.0 if policy == "adaptive" else 10.0
+            throughput = 30.6 if policy == "adaptive" else 30.0
+            runs = [
+                {"profile": "qwen-quality", "total_seconds": 100, "status": "success"},
+                {"profile": "wan-native-video", "total_seconds": 40, "status": "success"},
+                {"profile": "qwen-quality", "total_seconds": 100, "status": "success"},
+                {"profile": "wan-native-video", "total_seconds": 40, "status": "success"},
+                {"profile": "qwen-quality", "total_seconds": 100, "status": "success"},
+                {"profile": "wan-native-video", "total_seconds": 40, "status": "success"},
+            ]
+            events = [
+                {"wait_seconds": wait, "ready": True, "samples": [{"thermal_state": "nominal"}]}
+                for _ in range(5)
+            ]
+            path.write_text(json.dumps({
+                "schema_version": "kindred.comfyui.mps_recovery_policy.v1",
+                "status": {"completed": True},
+                "method": {
+                    "arm_label": slug,
+                    "counterbalance_round": block,
+                    "counterbalance_position": position,
+                    "policy": policy,
+                    "fixed_cooldown_seconds": 0.0 if policy == "adaptive" else 10.0,
+                },
+                "runs": runs,
+                "recovery_events": events,
+                "analysis": {
+                    "elapsed_seconds": 470 if policy == "adaptive" else 480,
+                    "outputs_per_hour": throughput,
+                    "image_deterministic": True,
+                    "video_deterministic": True,
+                },
+            }), encoding="utf-8")
+            arms.append({
+                "name": slug, "block": block, "sequence": sequence,
+                "position": position, "policy": policy, "report": str(path),
+                "status": "complete",
+            })
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema_version": "kindred.comfyui.mps_recovery_randomized_blocks.v1",
+        "method": {
+            "design": "balanced randomized paired blocks",
+            "blocks": 6,
+            "pairs_per_arm": 2,
+        },
+        "arms": arms,
+    }), encoding="utf-8")
+    output = tmp_path / "comparison.json"
+    completed = subprocess.run([
+        sys.executable, str(ROOT / "scripts" / "compare_randomized_recovery_blocks.py"),
+        "--manifest", str(manifest), "--output", str(output),
+    ], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    comparison = json.loads(output.read_text(encoding="utf-8"))
+    assert comparison["overall_pass"] is True
+    assert comparison["paired_block_ratios"]["count"] == 6
+    assert comparison["gates"]["adaptive_noninferior_in_both_order_strata"] is True
+    assert comparison["gates"]["adaptive_noninferior_in_both_time_halves"] is True

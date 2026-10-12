@@ -652,6 +652,22 @@ adaptive experimental: the result supports its throughput and wait-time value,
 but not an order-independent production promotion. The next confirmation
 should use more randomized/repeated blocks rather than changing this gate.
 
+The follow-up is frozen as six balanced randomized paired blocks. A recorded
+seed shuffles three fixed-first and three adaptive-first blocks. Every arm gets
+a fresh server, two warm-ups, and two measured Qwen/Wan pairs:
+
+```bash
+.venv/bin/python scripts/run_randomized_recovery_blocks.py \
+  --qwen-steps 20 --wan-steps 4 --port 8288 --random-seed 20261012
+```
+
+This is a roughly multi-hour experiment producing 12 arm reports plus a
+manifest and comparison beneath ignored `reports/`. In addition to the earlier
+gates, adaptive must be non-inferior within 2% in both arm-order strata and
+both chronological halves. Order-stratum and time-half geometric-mean ratio
+spreads must each be at most 1.10. The runner preserves a failed comparison as
+evidence and always stops its owned experimental server.
+
 The MLX-examples follow-up retained a read-only residual probe and a deliberately
 isolated cache experiment. Start the probe on a free experimental port, then run
 one governed `qwen-quality` render against it:
